@@ -1,0 +1,315 @@
+<h1 align="center">ARCANUM</h1>
+
+<p align="center">
+  Governed, non-custodial USDC wallets for autonomous AI agents on Arc.
+  Every payment is checked against onchain policy before money moves.
+</p>
+
+<p align="center">
+  <a href="https://thearcanum.in">Live app</a>
+  ·
+  <a href="#getting-started">Getting started</a>
+  ·
+  <a href="./docs/CHANGELOG.md">Changelog</a>
+  ·
+  <a href="./.github/CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/bunnyyxtan/ARCANUM/actions/workflows/ci.yml"><img src="https://github.com/bunnyyxtan/ARCANUM/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-2f3542" alt="AGPL-3.0 license" /></a>
+  <a href="https://github.com/bunnyyxtan/ARCANUM/releases/latest"><img src="https://img.shields.io/github/v/release/bunnyyxtan/ARCANUM?label=release&color=ff5a1f" alt="Latest release" /></a>
+  <img src="https://img.shields.io/badge/network-Arc%20Mainnet%20pilot-ff5a1f" alt="Arc Mainnet pilot" />
+</p>
+
+<p align="center">
+  <img src="./docs/assets/readme/product-overview.webp" alt="Arcanum operator dashboard showing governed value, active agents, the live event stream, and the restraint queue" width="920" />
+</p>
+
+<p align="center">
+  <sub>The operator dashboard: capital under governance, active agents, a live decision stream, and the human restraint queue.</sub>
+</p>
+
+## ETHOnline 2026
+
+Arcanum is entered as a Continuity project (Extend Open Source). The repository, its history and the production app predate the event; the feature built during it is **payment decision receipts**.
+
+| | |
+| --- | --- |
+| What is new | Issuer-signed, offline-verifiable receipts of the policy verdict for a signed payment intent, linked to the transaction that acts on them: `/receipts` in the dashboard, the public `/verify` page, and `requestPaymentReceipt` / `executePaymentIntentWithReceipt` in the SDK. The agent can sign with a Circle developer-controlled wallet instead of a host-held key (`arcanum-sdk/circle`, [docs/CIRCLE-WALLETS.md](./docs/CIRCLE-WALLETS.md)) |
+| Event work in one view | [`pre-ethonline-2026...ethonline-2026`](https://github.com/bunnyyxtan/ARCANUM/compare/pre-ethonline-2026...ethonline-2026): every commit after the baseline tag, with real dates. The same diff as a review-only pull request: [#6](https://github.com/bunnyyxtan/ARCANUM/pull/6) |
+| What existed before, what was built during, how AI was used | [PRE-EXISTING.md](./PRE-EXISTING.md) |
+| Feature documentation | [docs/PAYMENT-RECEIPTS.md](./docs/PAYMENT-RECEIPTS.md), [docs/CIRCLE-WALLETS.md](./docs/CIRCLE-WALLETS.md), [docs/CCTP-FUNDING.md](./docs/CCTP-FUNDING.md) |
+| Try it | [thearcanum.in/verify](https://thearcanum.in/verify), no account needed |
+
+## Overview
+
+Arcanum lets you give AI agents real USDC wallets without giving them unrestricted control of funds. It works for anyone who runs agents that spend money: individuals, teams, DAOs, and companies.
+
+AI agents are starting to pay for APIs, compute, data, and tools on their own. A normal wallet gives an agent too much freedom: one bad prompt or one compromised key can drain everything. Arcanum puts the rules inside the wallet itself. A GuardedWallet contract checks every spend against its policy before assets move, and escalates the risky ones to humans.
+
+It combines:
+
+- Smart-contract wallets with owner-defined policy envelopes, called doctrines
+- Vendor allowlists, category controls, per-payment limits, and fixed-window spend caps
+- Versioned human councils with expiring, cancellable, and release-time re-evaluated escalations
+- Freshness-bounded anomaly scores with rotatable service signers
+- A public explorer and badge layer so anyone can verify an agent is governed
+
+Unlike an off-chain spend dashboard that an agent can bypass, the enforcement lives where the funds live: in the wallet contract on Arc.
+
+## How it works
+
+1. **Connect a wallet**
+   Sign in with any EOA wallet using SIWE. A workspace is provisioned for your organization.
+
+2. **Deploy a GuardedWallet**
+   The `WalletFactory` contract deploys a governed wallet for each agent. You keep ownership; the agent gets constrained spending authority.
+
+3. **Attach a doctrine**
+   The doctrine defines what the agent may do: spend caps, allowed vendor categories, allowlist requirements, and the threshold where a human must take the seat.
+
+4. **The agent spends, the contract decides**
+   Each USDC payment is evaluated by the `PolicyEngine`. Normal payments pass. Boundary-crossing payments are denied, frozen, or escalated to a human quorum.
+
+5. **Settled movements leave a record**
+   The ledger, event stream, public explorer, and badge pages show indexed contract events for
+   governed movements and escalations. A policy-denied call that reverts does not emit a successful
+   DENY event; an issuer-signed payment decision receipt is separate preflight evidence.
+
+<p align="center">
+  <img src="./docs/assets/readme/policy-doctrine.webp" alt="Doctrine editor showing per-transaction, daily, and monthly USDC caps, allowed vendor categories, and the deployment record" width="920" />
+</p>
+
+<p align="center">
+  <sub>The doctrine editor: capital envelope, allowed counterparty categories, and escalation thresholds, signed by the owner and enforced onchain.</sub>
+</p>
+
+## Core capabilities
+
+### Guarded wallets
+
+Each agent receives a non-custodial smart-contract wallet. The operator keeps ownership and governance authority. The agent receives spending ability bounded by the active doctrine.
+
+### Policy doctrines
+
+A doctrine is the wallet's governing document: per-transaction, daily, and monthly USDC caps, allowed vendor categories, allowlist enforcement, and the sensitive threshold that triggers human review.
+
+### Vendor registry
+
+Counterparties are registered with a name, category, and optional per-payment cap. Agents can pay
+known infrastructure providers while unknown destinations stay blocked.
+
+### Human escalation quorum
+
+Payments that cross a policy boundary go to a restraint queue where human approvers release or reject them. Autonomy for the routine, review for the sensitive.
+
+### Anomaly defense
+
+An anomaly layer scores agent behaviour and can flag, restrain, or freeze wallets whose activity deviates from the expected pattern.
+
+### Payment decision receipts
+
+Before an agent pays, it can ask the API for a receipt: an issuer-signed, offline-verifiable snapshot of the policy verdict for that exact signed intent at one pinned block. The transaction that acts on the receipt names it in its calldata, and the API links the two afterwards, so the decision and its consequence can be audited side by side. Anyone can verify a receipt at `/verify` without an account. Details in [docs/PAYMENT-RECEIPTS.md](./docs/PAYMENT-RECEIPTS.md).
+
+### Public proof surfaces
+
+Every governed wallet has public explorer and badge pages, so anyone can show that an agent is governed and link to its live decision record.
+
+<p align="center">
+  <img src="./docs/assets/readme/governed-ledger.webp" alt="Governed ledger showing total value, approved and escalated counts, and rows of policy decisions with amounts and statuses" width="920" />
+</p>
+
+<p align="center">
+  <sub>The governed ledger: indexed records for settled movements, with amounts, counterparties, and verdicts.</sub>
+</p>
+
+## More screens
+
+| Landing | Agent registry |
+| --- | --- |
+| ![Arcanum landing page](./docs/assets/readme/landing.webp) | ![Agent registry with posture scores and daily spend](./docs/assets/readme/agent-registry.webp) |
+
+## Deployed contracts
+
+### Arc Mainnet (limited pilot)
+
+Network: **Arc Mainnet** (chain 5042) · Explorer: [explorer.arc.io](https://explorer.arc.io)
+
+| Module | Address | Responsibility |
+| --- | --- | --- |
+| WalletFactory | `0x7077A28C003D9274d45263b04Ac9cB9a58Ab5342` | Deploys GuardedWallet instances |
+| PolicyEngine | `0xb74De5aD09a75dea03f5ddD77A25e1Ca11724483` | Evaluates doctrine rules on every spend |
+| EscalationManager | `0x2a653D3d90BFA13bE9d8F9eB2Cc87578967128EF` | Quorum approvals for sensitive actions |
+| AnomalyOracle | `0xb2ae97dB77c8fdF8D9CE00743A4B095E4f2AdD8F` | Anomaly signals for the policy layer |
+| VendorRegistry | `0x722C2f83ca55503Cf3104bABeb3EaA9d676B1469` | Vendor allowlist, categories, and caps |
+
+Recorded in `packages/contracts/deployments/arc-mainnet.json` (deployed 16 September 2026,
+indexed from block 21,141,720). Gas on Arc is paid in USDC and the wallets hold real USDC. The
+contracts have not received an independent third-party audit, so this deployment is a limited
+pilot: keep per-wallet caps small, deposit only what you can afford to lose, and expect the
+operator to freeze wallets if a defect is found.
+
+### Arc Testnet (development)
+
+Network: **Arc Testnet** (chain 5042002) · Explorer: [testnet.arcscan.app](https://testnet.arcscan.app)
+
+| Module | Address | Responsibility |
+| --- | --- | --- |
+| WalletFactory | `0xbE1bC48F26e7166D872828d40e82A6407dbD350C` | Deploys GuardedWallet instances |
+| PolicyEngine | `0x7777ac24A19202E619bF67B92375E714e72033A4` | Evaluates doctrine rules on every spend |
+| EscalationManager | `0xb5907700Df79B9030FafDaA48C26AE355512cCcd` | Quorum approvals for sensitive actions |
+| AnomalyOracle | `0x2eae369C3f93ebf5Bbe62FBE6d2CD976977f7AE8` | Anomaly signals for the policy layer |
+| VendorRegistry | `0xeA4597b02Ea2958A80afc47c417422598b9c548C` | Vendor allowlist, categories, and caps |
+
+These are the protocol v2 contracts recorded in the committed manifest
+`packages/contracts/deployments/arc-testnet.json` (deployed 7 September 2026, indexed from block
+60,951,839). The earlier v1 testnet deployment is retired and owners must redeploy v1 wallets
+through the v2 factory.
+
+Each runtime serves one network, selected by `NEXT_PUBLIC_ARC_NETWORK` (`mainnet` or `testnet`),
+and reads its addresses from the matching manifest. Neither deployment has received an
+independent third-party audit.
+
+## Architecture
+
+```text
+Agent / Operator wallet
+        |
+Next.js web app (dashboard, explorer, badges, approver portal)
+        |
+tRPC API  ·  SIWE sessions
+        |
+Supabase read models  <──  Ponder indexer  <──  Arc contracts (mainnet or testnet)
+                                                 WalletFactory · GuardedWallet
+                                                 PolicyEngine · EscalationManager
+                                                 AnomalyOracle · VendorRegistry
+```
+
+Policy enforcement happens onchain. The indexer turns contract events into read models, and the web app renders the evidence. The server never holds agent private keys.
+
+| Path | Purpose |
+| --- | --- |
+| `apps/web` | Next.js app: dashboard, landing, public explorer, badges, approver portal |
+| `apps/docs` | Documentation site workspace |
+| `packages/contracts` | Solidity contracts, Foundry tests, ABIs, deployment scripts |
+| `packages/api` | tRPC API layer with session-aware reads |
+| `packages/indexer` | Ponder indexer for contract events and read models |
+| `packages/db` | Database schema, migrations, seed helpers |
+| `packages/auth` | SIWE and session helpers |
+| `packages/sdk` · `packages/sdk-py` | TypeScript and Python SDKs |
+| `packages/shared` · `packages/ui` · `packages/config` | Shared chain config, UI, and tooling |
+
+## Technology stack
+
+| Layer | Technology | Responsibility |
+| --- | --- | --- |
+| Contracts | Solidity 0.8.24 · Foundry | Onchain policy enforcement and tests |
+| Application | Next.js 15 · React | Operator console and public surfaces |
+| Language | TypeScript | Static typing across app, API, and SDK |
+| API | tRPC | Typed, session-aware application reads |
+| Data | Supabase (PostgreSQL) | Read models, workspaces, audit events |
+| Indexing | Ponder | Contract events into queryable rows |
+| Auth | SIWE | Wallet-native sign-in and sessions |
+| Testing | Vitest · Foundry | API, SDK, and contract test suites |
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 22 or later
+- npm 10 or later
+
+### Installation
+
+```bash
+git clone https://github.com/bunnyyxtan/ARCANUM.git
+cd ARCANUM
+npm install
+```
+
+### Environment configuration
+
+```bash
+cp apps/web/.env.example apps/web/.env.local
+```
+
+Fill in the variables before starting. The essentials:
+
+| Variable | Required | Description |
+| --- | ---: | --- |
+| `NEXT_PUBLIC_ARC_NETWORK` | No | `mainnet` (what thearcanum.in runs) or `testnet` (the code default for development and self-hosting); one deployment serves one network. Set `ARC_NETWORK` as well when configuring server-side code, or leave both unset for testnet. |
+| `ARC_RPC_URL` | Recommended | RPC URL for server-side reads on the selected network (on testnet only, the legacy `ARC_TESTNET_RPC` is a fallback when this is unset) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key (client-safe) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-only Supabase key, never client-side |
+| `SIWE_SECRET` | Yes | Server-side session secret |
+| `NEXT_PUBLIC_APP_URL` | Yes | Canonical app URL |
+| `ARCANUM_RECEIPT_ISSUER_PRIVATE_KEY` | For receipts | Signing key for payment decision receipts; must match an active entry in the published issuer registry |
+
+Contract addresses are not configured through the environment. Every runtime reads
+`packages/contracts/deployments/arc-<network>.json`, the manifest written by the deploy script.
+
+The full annotated list lives in `apps/web/.env.example`. Never commit `.env.local`, private keys, or service-role keys.
+
+### Start development
+
+```bash
+npm run dev
+```
+
+Open the URL printed by Next.js.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run build` | Production build of all workspaces |
+| `npm run typecheck` | Validate TypeScript types |
+| `npm run lint` | Static analysis and formatting checks |
+| `forge build` · `forge test` | Compile and test contracts, from `packages/contracts` |
+
+## Testing
+
+- **Contract tests** with Foundry cover policy enforcement, escalation, and wallet behaviour.
+- **Auth, API, indexer, SDK, and web tests** with Vitest cover session-aware reads, governance writes, indexing, and client behaviour:
+  `npm test -w @arcanum/auth`, `npm test -w @arcanum/api`, `npm test -w @arcanum/indexer`, `npm test -w @arcanum/sdk`, and `npm test -w @arcanum/web`.
+- **CI** runs build, lint, typecheck, contract, and SDK checks on every push.
+
+## Status
+
+Arcanum runs publicly at [thearcanum.in](https://thearcanum.in) on Arc Mainnet as a limited
+pilot. The Arc Testnet contracts stay deployed for development and self-hosting.
+
+- The contracts have internal tests, invariants and automated analyzers, but no independent third-party audit.
+- The dashboard, public explorer, badge routes, receipts and approver portal are live.
+- Advanced write paths and indexer reconciliation are still being hardened.
+- The mainnet pilot keeps per-wallet caps small; an independent audit is the prerequisite for lifting those limits.
+
+Arcanum is non-custodial. It is not an exchange, not a token sale, not a fiat ramp, and not a hosted wallet provider.
+
+## Roadmap
+
+- Pilot hardening: read-model resilience, indexer recovery, richer failure states
+- Governance depth: doctrine templates, per-signer controls, stronger anomaly scoring
+- Developer experience: deeper SDK examples, integration guides, self-hosting docs
+- Audit path: internal reviews and automated coverage ahead of external audit
+
+## Contributing
+
+Contributions are welcome through focused pull requests. Read [CONTRIBUTING.md](./.github/CONTRIBUTING.md) for setup and the review checklist. Releases follow semantic versioning and are tracked in [CHANGELOG.md](./docs/CHANGELOG.md).
+
+## Security
+
+Do not report vulnerabilities through public issues. Follow the private process in [SECURITY.md](./.github/SECURITY.md). Treat all contracts as unaudited code, on the mainnet pilot as much as on testnet.
+
+## License
+
+Open source. The application — web app, API, indexer, and database layer — is licensed
+under [AGPL-3.0](./LICENSE). You may use, modify, and self-host it; a modified version
+offered to others over a network must publish its source.
+
+The parts meant to be embedded in other software are permissive instead. The
+[contracts](./packages/contracts/LICENSE), the [TypeScript SDK](./packages/sdk/LICENSE),
+and the [Python SDK](./packages/sdk-py/LICENSE) are Apache-2.0.

@@ -1,0 +1,14 @@
+node_modules/
+web/dist/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.tavrel/
+.cache/
+.env
+.env.*
+!.env.example
+artifacts/*.webm
+artifacts/*.mp4
+

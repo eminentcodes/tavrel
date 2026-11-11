@@ -1,0 +1,242 @@
+{
+  "mode": "simulation",
+  "live_hermes_session": false,
+  "paid_calls": 0,
+  "wallet_payments": 0,
+  "task": {
+    "id": "tsk_f63d67e3061943c8",
+    "name": "Competitor research",
+    "description": "Research competitors with an allowance and human approval for larger calls.",
+    "limit_cents": 250,
+    "threshold_cents": 100,
+    "spent_cents": 184,
+    "reserved_cents": 0,
+    "allowed_services": [
+      "research_report",
+      "search_brief"
+    ],
+    "paused": false,
+    "created_at": "2026-11-10T23:07:25.615+00:00",
+    "require_approval": false,
+    "mode": "simulation",
+    "available_cents": 66
+  },
+  "small_purchase": {
+    "id": "req_99bb53600443454d",
+    "task_id": "tsk_f63d67e3061943c8",
+    "request_key": "competitor_brief",
+    "approval_hash": "05113e98545d92c4463db09702ec0a3e5bf14c6dc7720f86e4a12cc9d784fa7f",
+    "service_id": "search_brief",
+    "payload": {
+      "query": "Find sources for a competitor comparison"
+    },
+    "quote_cents": 24,
+    "actual_cents": 24,
+    "status": "settled",
+    "reason": null,
+    "actor": "agent",
+    "output": {
+      "query": "Find sources for a competitor comparison",
+      "simulated": true,
+      "sources": [
+        {
+          "note": "Persistent memory, tools, and plugin interfaces.",
+          "title": "Hermes Agent documentation",
+          "url": "https://hermes-agent.nousresearch.com/docs/"
+        },
+        {
+          "note": "Public source code and extension examples.",
+          "title": "Hermes Agent repository",
+          "url": "https://github.com/NousResearch/hermes-agent"
+        }
+      ],
+      "summary": "A sample research result for the budget-control walkthrough. The sources below are illustrative links, not live search results.",
+      "title": "Search brief"
+    },
+    "evidence": {
+      "kind": "simulated",
+      "note": "Synthetic receipt. No API charge or wallet payment occurred.",
+      "provider": "Local simulator",
+      "reference": "sim_req_99bb53600443454d"
+    },
+    "created_at": "2026-11-10T23:07:25.683+00:00",
+    "updated_at": "2026-11-10T23:07:25.746+00:00",
+    "billing": "simulated",
+    "service_name": "Search brief",
+    "task_name": "Competitor research"
+  },
+  "pending_purchase": {
+    "id": "req_f29be78059b54d81",
+    "task_id": "tsk_f63d67e3061943c8",
+    "request_key": "competitor_report",
+    "approval_hash": "a136674eeff7ff9aaf1b0cb9d5d09ed812aad5ac0671700b0500c7be369d59fa",
+    "service_id": "research_report",
+    "payload": {
+      "query": "Write the detailed competitor comparison"
+    },
+    "quote_cents": 160,
+    "actual_cents": null,
+    "status": "pending_approval",
+    "reason": null,
+    "actor": "agent",
+    "output": null,
+    "evidence": null,
+    "created_at": "2026-11-10T23:07:25.805+00:00",
+    "updated_at": "2026-11-10T23:07:25.805+00:00",
+    "billing": "simulated",
+    "service_name": "Research report",
+    "task_name": "Competitor research"
+  },
+  "approved_receipt": {
+    "id": "req_f29be78059b54d81",
+    "task_id": "tsk_f63d67e3061943c8",
+    "request_key": "competitor_report",
+    "approval_hash": "a136674eeff7ff9aaf1b0cb9d5d09ed812aad5ac0671700b0500c7be369d59fa",
+    "service_id": "research_report",
+    "payload": {
+      "query": "Write the detailed competitor comparison"
+    },
+    "quote_cents": 160,
+    "actual_cents": 160,
+    "status": "settled",
+    "reason": null,
+    "actor": "agent",
+    "output": {
+      "query": "Write the detailed competitor comparison",
+      "sections": [
+        {
+          "body": "Write the detailed competitor comparison",
+          "heading": "Research scope"
+        },
+        {
+          "body": "Compare features, integration effort, documented pricing, and the limits of each source.",
+          "heading": "Suggested comparison"
+        },
+        {
+          "body": "Verify the findings through a supported live research adapter before using them for a decision.",
+          "heading": "Next action"
+        }
+      ],
+      "simulated": true,
+      "summary": "This simulated report demonstrates a larger purchase that requires an operator's approval. No research API was contacted.",
+      "title": "Research report"
+    },
+    "evidence": {
+      "kind": "simulated",
+      "note": "Synthetic receipt. No API charge or wallet payment occurred.",
+      "provider": "Local simulator",
+      "reference": "sim_req_f29be78059b54d81"
+    },
+    "created_at": "2026-11-10T23:07:25.805+00:00",
+    "updated_at": "2026-11-10T23:07:25.990+00:00",
+    "billing": "simulated",
+    "service_name": "Research report",
+    "task_name": "Competitor research"
+  },
+  "over_budget_request": {
+    "id": "req_026b01a4b17e43fb",
+    "task_id": "tsk_f63d67e3061943c8",
+    "request_key": "extra_report",
+    "approval_hash": "d1ef4190f197ae924fe16a157a83d9778ef0aea6f981f813817cae3d2ea13aeb",
+    "service_id": "research_report",
+    "payload": {
+      "query": "Buy another research report"
+    },
+    "quote_cents": 160,
+    "actual_cents": null,
+    "status": "blocked",
+    "reason": "Purchase exceeds the task's remaining budget.",
+    "actor": "agent",
+    "output": null,
+    "evidence": null,
+    "created_at": "2026-11-10T23:07:26.109+00:00",
+    "updated_at": "2026-11-10T23:07:26.109+00:00",
+    "billing": "simulated",
+    "service_name": "Research report",
+    "task_name": "Competitor research"
+  },
+  "idempotent_retry_same_id": true,
+  "events": [
+    {
+      "id": 9,
+      "task_id": "tsk_f63d67e3061943c8",
+      "request_id": "req_026b01a4b17e43fb",
+      "kind": "blocked",
+      "actor": "agent",
+      "message": "Purchase exceeds the task's remaining budget.",
+      "created_at": "2026-11-10T23:07:26.109+00:00"
+    },
+    {
+      "id": 8,
+      "task_id": "tsk_f63d67e3061943c8",
+      "request_id": "req_f29be78059b54d81",
+      "kind": "settled",
+      "actor": "agent",
+      "message": "Simulated receipt recorded; unused reservation released.",
+      "created_at": "2026-11-10T23:07:25.990+00:00"
+    },
+    {
+      "id": 7,
+      "task_id": "tsk_f63d67e3061943c8",
+      "request_id": "req_f29be78059b54d81",
+      "kind": "executing",
+      "actor": "agent",
+      "message": "Service execution started with the full quote held.",
+      "created_at": "2026-11-10T23:07:25.945+00:00"
+    },
+    {
+      "id": 6,
+      "task_id": "tsk_f63d67e3061943c8",
+      "request_id": "req_f29be78059b54d81",
+      "kind": "approved",
+      "actor": "operator",
+      "message": "Operator approved the exact request and reserved maximum price.",
+      "created_at": "2026-11-10T23:07:25.908+00:00"
+    },
+    {
+      "id": 5,
+      "task_id": "tsk_f63d67e3061943c8",
+      "request_id": "req_f29be78059b54d81",
+      "kind": "pending_approval",
+      "actor": "agent",
+      "message": "Waiting for operator approval; maximum cost reserved.",
+      "created_at": "2026-11-10T23:07:25.806+00:00"
+    },
+    {
+      "id": 4,
+      "task_id": "tsk_f63d67e3061943c8",
+      "request_id": "req_99bb53600443454d",
+      "kind": "settled",
+      "actor": "agent",
+      "message": "Simulated receipt recorded; unused reservation released.",
+      "created_at": "2026-11-10T23:07:25.747+00:00"
+    },
+    {
+      "id": 3,
+      "task_id": "tsk_f63d67e3061943c8",
+      "request_id": "req_99bb53600443454d",
+      "kind": "executing",
+      "actor": "agent",
+      "message": "Service execution started with the full quote held.",
+      "created_at": "2026-11-10T23:07:25.712+00:00"
+    },
+    {
+      "id": 2,
+      "task_id": "tsk_f63d67e3061943c8",
+      "request_id": "req_99bb53600443454d",
+      "kind": "reserved",
+      "actor": "agent",
+      "message": "Budget reserved before service execution.",
+      "created_at": "2026-11-10T23:07:25.683+00:00"
+    },
+    {
+      "id": 1,
+      "task_id": "tsk_f63d67e3061943c8",
+      "request_id": null,
+      "kind": "task_created",
+      "actor": "operator",
+      "message": "Created Competitor research with a $2.50 allowance.",
+      "created_at": "2026-11-10T23:07:25.615+00:00"
+    }
+  ]
+}

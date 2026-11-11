@@ -1,0 +1,10 @@
+name: tavrel
+version: "0.2.0"
+description: Task budgets and operator approvals through a Tavrel gateway with free public research APIs and an explicit simulation mode. Paid execution is disabled.
+provides_tools:
+  - tavrel_status
+  - tavrel_purchase
+  - tavrel_receipt
+requires_env:
+  - TAVREL_TASK_TOKEN
+
