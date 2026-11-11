@@ -1,10 +1,11 @@
 # Tavrel — Hermes Agents hackathon project plan
 
-Last updated: 2026-11-11 00:09 WAT (UTC+01:00).
+Last updated: 2026-11-11 08:08 WAT (UTC+01:00).
 Stage: the zero-cost integration extension is complete: live free research, actual Hermes loader/registry execution, operator reconciliation, documentation, and packaging are verified. All 71 behavioral tests pass. The user's spending constraint remains $0.
 Target: Hermes Agents hackathon, selected by the user on 2026-11-09; exact event page and rules awaiting verification.
 Working name: **Tavrel**, previously selected by the user; retain while exploring the new product.
 Product description: a Hermes plugin for deterministic task budgets, human purchase approvals, and a durable spend ledger, with a companion gateway and operator CLI.
+Repository: [eminentcodes/tavrel](https://github.com/eminentcodes/tavrel), private. The current build is pushed to main from a standalone repository in this workspace.
 
 ## Current objective
 
@@ -114,7 +115,7 @@ Demand and differentiation still need evidence. Broad usefulness is a product go
 - [ ] Add per-session task binding if needed; the current environment token binds the entire Hermes process.
 - [ ] Prove at least one supported live provider adapter with authoritative billing evidence, after authorization and account setup.
 - [ ] Prepare the demo video after the build is ready.
-- [ ] Create a standalone Tavrel Git repository, push the project to the authenticated GitHub account, and verify the remote commit.
+- [x] Create a standalone Tavrel Git repository, push the project to the authenticated GitHub account, and verify the remote commit.
 
 - [x] Read the previous working documents and record the target change.
 - [x] Record the user's requirement to continue ideating around a useful plugin.

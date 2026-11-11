@@ -50,7 +50,8 @@ This protocol applies while an agent is actively working. These Markdown files d
 - Target: Hermes Agents hackathon; exact event and rules awaiting verification.
 - Product direction: Tavrel spending control for Hermes, without buy. Task budgets, deterministic authorization, a persistent ledger, and operator CLI commands are implemented. The dashboard remains deferred. Real free GitHub/Crossref APIs and local extraction are the default; explicit simulation demonstrates nonzero spending. The user's allowed spend is $0.
 - Implementation: the real Hermes loader and registry successfully execute Tavrel tools and /budget against the gateway, including live free research and request-bound operator approval. Operator reconciliation is implemented as an attestation without reexecution or verified service output. All 71 behavioral tests pass with resource warnings treated as errors. Setup, packaged plugin, and sanitized simulation/live/Hermes proofs are refreshed and consistent with source. Model-driven Hermes sessions, paid billing/settlement, per-session task binding, and OS isolation remain unverified or unimplemented.
-- Last checkpoint: 2026-11-11 00:09 WAT.
+- Repository: [eminentcodes/tavrel](https://github.com/eminentcodes/tavrel), private, with main tracking origin/main in this standalone project repository. Creation and pushing were authorized on 2026-11-11.
+- Last checkpoint: 2026-11-11 08:08 WAT.
 - Next checkpoint due: 30 minutes after the next active session starts.
 
 ### 2026-11-10 06:47 WAT — Resume and live-integration scope
@@ -328,3 +329,25 @@ This protocol applies while an agent is actively working. These Markdown files d
 - Evidence: read agent.md and projectplan.md; git rev-parse --show-toplevel resolves to C:/Users/Great; git config --get-all credential.helper returns manager.
 - Next steps: initialize project-local Git, exclude secrets/runtime/cache files, identify the authenticated GitHub account without printing credentials, create the repository, and verify the push.
 - Next checkpoint due: 2026-11-11 07:55 WAT if active work continues.
+
+### 2026-11-11 08:02 WAT — Repository publication checkpoint
+
+- Objective: finish pushing the Tavrel project to the user's GitHub account.
+- Completed: initialized project-local Git on main; created private repository https://github.com/eminentcodes/tavrel using the saved GitHub account; reviewed all 103 publishable files and committed the current prototype as b3bebd31627fb4cd7e5965e625717f5684d719b1.
+- Evidence: publishable files contain no runtime/secret filenames or populated credential fields in the proofs. The plugin archive exactly matches source. Credential-pattern matches were public documentation anchor text, not credentials. The modified progress/plan documents pass Git's whitespace check; the initial project snapshot contains pre-existing whitespace in code/research documents.
+- Failures and corrections: the sandbox could not access saved credentials or update .git/config; authorized escalation allowed authentication, repository creation, and remote setup. Git's bundled certificate store rejected GitHub's issuer; the push is being retried with Windows certificate validation.
+- Checkpoint delay: the checkpoint is seven minutes late across approval waits and the certificate failure/retry; this records the actual completion time of the checkpoint update.
+- Decisions: retain the private repository and existing verified implementation. No paid calls, deployments, or hackathon submissions were made.
+- Next steps: verify remote main against the local commit, mark the repository milestone complete, and push the final progress records.
+- Next checkpoint due: 2026-11-11 08:32 WAT if active work continues.
+
+### 2026-11-11 08:08 WAT — Repository publication handoff
+
+- Objective: create the user's GitHub repository and push Tavrel.
+- Completed: created private repository https://github.com/eminentcodes/tavrel; pushed the complete reviewed project to main; verified GitHub's main reference exactly matches initial local commit b3bebd31627fb4cd7e5965e625717f5684d719b1. Updated the repository milestone and current-state records.
+- Evidence: Git reports a successful new-branch push and origin/main tracking. Authenticated GitHub branch-reference verification reports matches_expected_sha=true. All 103 project files, documentation, behavioral tests, sanitized proofs, and the source-matching plugin archive are included; caches, runtime ledgers, operator keys, and local credentials are excluded.
+- Failures and corrections: the first GitHub commit-detail verification response was interrupted because the initial commit has a large diff. Verification through the smaller branch-reference endpoint succeeded. Git's Windows certificate backend resolved the earlier issuer-validation failure.
+- Decisions: repository publication is complete. No implementation changed and the existing 71-test verification remains the latest behavioral evidence. The repository is private; deployment and hackathon submission remain separate.
+- Remaining uncertainties: exact event rules, a model-driven Hermes session, session-specific task binding, OS isolation, and authoritative paid-provider evidence remain as previously recorded.
+- Next steps: push this final documentation update and verify branch synchronization; continue remaining product milestones only when requested.
+- Next checkpoint due: 30 minutes after the next active session starts.
