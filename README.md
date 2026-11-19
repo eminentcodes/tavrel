@@ -142,4 +142,4 @@ python scripts/verify_hermes.py --hermes-source PATH_TO_HERMES --live --output a
 
 For the cached checkout used here, add `--hermes-source .cache/hermes-agent --hermes-deps .cache/hermes-deps`. Omit `--live` for offline registry verification with local extraction. The script creates a temporary Hermes profile, copies only the two plugin files, loads the actual upstream manager, dispatches registered tools, and invokes `/budget`. It does not start a model or alter the operator's existing Hermes profile.
 
-See [the project plan](projectplan.md), [progress log](agent.md), and [verification record](artifacts/verification.md) for milestone status. ARCANUM supplied conceptual inspiration; no ARCANUM source code or assets were copied into this implementation. Research snapshots retain their upstream provenance and are not part of the plugin distribution.
+See the [verification record](artifacts/verification.md) for observed results and remaining integration limits. ARCANUM supplied conceptual inspiration; no ARCANUM source code or assets were copied into this implementation.

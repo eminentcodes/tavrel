@@ -12,3 +12,9 @@ __pycache__/
 artifacts/*.webm
 artifacts/*.mp4
 
+# Local workspace planning and research; excluded from the published project.
+AGENTS.md
+agent.md
+projectplan*.md
+research/
+
