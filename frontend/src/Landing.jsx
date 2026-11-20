@@ -1,0 +1,39 @@
+import React, { useRef } from 'react';
+import { ArrowUpRight, ShieldCheck, SlidersHorizontal, ListChecks, Plus, Robot, Check } from '@phosphor-icons/react';
+import { Link, GlassForms, ArrowCTA, Brand, Status } from './components.jsx';
+import { Reveal, HeroGlass, HoverSurface } from './motion.jsx';
+
+const questions = [
+  ['What does Tavrel do?', 'Tavrel gives agent payment tasks defined allowances, approved recipients, and deterministic rules. It prepares payment intents, routes larger requests for operator approval, and records the decisions in a durable ledger.'],
+  ['Does approval move funds?', 'No. Approval makes the request eligible to send. Review the network fee, then sign the transfer in your wallet. Tavrel submits it and checks for a matching successful transfer in a finalized block.'],
+  ['Which network and asset does it use?', 'The first route uses zkVerify Volta and its native test asset, tVFY, with 18 decimal places. tVFY is a test token, not a stablecoin.'],
+  ['Can an agent approve its own request?', 'The agent’s task token can prepare and inspect requests. Approval and policy changes require separate operator access. The local prototype needs process isolation before it can protect against an agent with access to operator files.'],
+  ['What happens when an agent retries?', 'The same request key and identical payment inputs return the original intent. A changed amount or recipient conflicts instead of silently creating a second request.'],
+  ['Are these decisions ZK proofs?', 'No. The current ledger records application policy decisions. zkVerify network integration and local decision records do not establish a cryptographic policy proof.'],
+];
+
+export function Landing() {
+  const heroRef = useRef();
+  return <div className="landing">
+    <section className="hero" id="home" ref={heroRef}>
+      <header className="landing-nav"><Brand /><nav aria-label="Main navigation"><a href="#home" className="selected">Home</a><a href="#product">Product</a><a href="#workflow">Workflow</a><Link href="/docs">Docs</Link></nav></header>
+      <HeroGlass heroRef={heroRef} />
+      <div className="hero-content"><Reveal><h1>Agentic payments.<br />On your terms.</h1></Reveal><Reveal delay={0.2} className="hero-aside"><p>Your agents prepare payments.<br />You set the limits.<br />You stay in control.</p><ArrowCTA href="/dashboard">Launch app</ArrowCTA></Reveal></div>
+    </section>
+    <section id="product" className="product-section"><Reveal className="product-intro"><span className="eyebrow">Autonomy, with boundaries</span><h2>Give your agents<br />room to work.</h2><p>A clear allowance, known recipients, and your approval when a payment needs a second look.</p></Reveal><div className="product-features">
+      <Reveal><article><SlidersHorizontal size={28} weight="light" /><h3>Your rules, applied.</h3><p>Set each agent’s allowance, payment cap, and approved recipients.</p></article></Reveal><Reveal delay={0.1}><article><ShieldCheck size={28} weight="light" /><h3>The final say is yours.</h3><p>Review the exact amount and recipient before approving an exception.</p></article></Reveal><Reveal delay={0.2}><article><ListChecks size={28} weight="light" /><h3>Every request, accounted for.</h3><p>Follow requests, approvals, payments, and confirmations in one ledger.</p></article></Reveal>
+    </div></section>
+    <section className="policy-section"><Reveal><h2>Boundaries you can see.</h2><p>A defined allowance, approved recipients, and a clear threshold for human review.</p></Reveal><Reveal delay={0.1}><PolicyPreview /></Reveal></section>
+    <section id="workflow" className="workflow-section"><Reveal><h2>A little structure.<br />A lot of clarity.</h2></Reveal><div className="workflow-steps">{[['Set an allowance', 'Choose an agent, its recipients, and its limits.'], ['Prepare a payment', 'Tavrel checks the request and reserves its allowance.'], ['Sign and pay', 'Review the fee, sign in your wallet, and follow confirmation.']].map(([title, copy], index) => <Reveal delay={index * 0.1} key={title}><article><span>{String(index + 1).padStart(2, '0')}</span><h3>{title}</h3><p>{copy}</p></article></Reveal>)}</div></section>
+    <section className="approval-feature"><Reveal className="approval-copy"><span className="eyebrow">Human judgment, where it matters</span><h2>A second look.<br />Before the next step.</h2><p>The exact recipient, amount, and policy version. Everything you need to make a clear decision.</p></Reveal><Reveal className="app-image-frame" delay={0.15}><HoverSurface><img src="/payment-preview.png" alt="Tavrel payment review showing a 6 tVFY request, its recipient, policy version, and approval controls" loading="lazy" width="1000" height="1100" /></HoverSurface></Reveal></section>
+    <section className="ledger-feature"><Reveal><div className="ledger-intro"><h2>Nothing gets<br />lost in the process.</h2><p>Ready, pending, blocked, or confirmed. Follow each payment request through its actual state.</p></div></Reveal><Reveal className="ledger-image-frame" delay={0.1}><img src="/ledger-preview.png" alt="The Tavrel payment ledger showing payment requests and their status" loading="lazy" width="1200" height="500" /></Reveal></section>
+    <section className="sponsor-section"><Reveal className="sponsor-art"><GlassForms small /><div className="network-wordmark">zkVerify</div></Reveal><Reveal className="sponsor-copy"><h2>Built on<br />zkVerify.</h2><p>Bring clear rules and human approval to agent payment requests on zkVerify.</p></Reveal></section>
+    <section className="faq-section"><Reveal><h2>A few good questions.</h2></Reveal><div className="faq-list">{questions.map(([question, answer], index) => <Reveal delay={index * 0.03} key={question}><details><summary>{question}<Plus size={19} /></summary><p>{answer}</p></details></Reveal>)}</div></section>
+    <section className="final-cta"><GlassForms small /><Reveal><h2>Let agents work.<br />Keep the final say.</h2><ArrowCTA href="/dashboard">Launch app</ArrowCTA></Reveal></section>
+    <footer className="landing-footer"><Brand /><p>Controlled spending for autonomous agents.</p><div><Link href="/docs">Docs</Link><a href="https://docs.zkverify.io/" target="_blank" rel="noreferrer">Explore zkVerify <ArrowUpRight size={16} /></a><a href="https://github.com/eminentcodes/tavrel" target="_blank" rel="noreferrer">GitHub <ArrowUpRight size={16} /></a></div></footer>
+  </div>;
+}
+
+function PolicyPreview() {
+  return <div className="policy-playground static-policy"><div className="policy-example"><div className="policy-card-heading"><span className="example-label">Example payment policy</span><span className="policy-lock"><ShieldCheck size={16} />Defined limits</span></div><div className="example-agent"><span><Robot size={25} weight="light" /></span><div><strong>Research assistant</strong><small>Known recipients. Clear boundaries.</small></div></div><dl><div><dt>Task allowance</dt><dd>10 <span>tVFY</span></dd></div><div><dt>Approval above</dt><dd>3 <span>tVFY</span></dd></div><div><dt>Recipients</dt><dd>Approved accounts</dd></div></dl></div><div className="policy-interaction"><span className="policy-caption">An allowance with a second look.</span><div className="invoice-amount"><span>Approval threshold</span><strong>3<small>tVFY</small></strong></div><div className="static-range" aria-hidden="true"><div className="range-line"><span className="range-fill" /><span className="range-thumb" /></div><div className="range-endpoints"><span>0 tVFY</span><span>10 tVFY</span></div></div><div className="static-recipient"><span><Check size={12} weight="bold" /></span>Approved recipients only</div><div className="sample-verdict"><ShieldCheck size={20} weight="light" /><p>Routine requests stay within their allowance.<br />Larger payments come to you for review.</p></div></div></div>;
+}

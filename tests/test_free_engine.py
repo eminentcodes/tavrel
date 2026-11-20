@@ -7,7 +7,8 @@ from unittest.mock import patch
 
 from tavrel.engine import Engine, PolicyError
 from tavrel.live_services import FREE_SERVICES
-from tavrel.services import ProviderRejected, Receipt, SERVICES
+from tavrel.services import ProviderRejected, Receipt
+from tests.fixtures import SERVICES
 
 
 class FreeEngineTests(TestCase):

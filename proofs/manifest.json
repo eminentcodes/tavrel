@@ -1,0 +1,10 @@
+{
+  "protocol": "fflonk",
+  "circuit_sha256": "86390e07e44ae186811f982738f978e438c6e2d44f83dfe14e11742b63303e6b",
+  "srs_blake2b512": "9532c6c04a21335577713724b6d46c266a93aa621b78882b8b64b26f3080a8f0d974aded00c4d781adbdf493a45c51db455108f7aeedb49971569d57a56971c3",
+  "srs_sha256": "ed3622a7c79b0b49aadd134ebbc5b77df8c8c59bccebdfd0d9bf2c1a51561cf9",
+  "srs_source": "https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080/ppot_0080_16.ptau",
+  "ceremony_reverified": false,
+  "verification_key_sha256": "3bdf1b4af7b49252adbfb3bc16d831f696258e8a492a3f5d7650705e5e18d5ed",
+  "n_public": 1
+}

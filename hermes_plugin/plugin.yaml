@@ -1,10 +1,14 @@
 name: tavrel
-version: "0.2.0"
-description: Task budgets and operator approvals through a Tavrel gateway with free public research APIs and an explicit simulation mode. Paid execution is disabled.
+version: "0.3.0"
+description: Governed native zkVerify Volta payment intents, operator approvals, and free research tools. Signing and broadcast are disabled.
 provides_tools:
   - tavrel_status
   - tavrel_purchase
   - tavrel_receipt
+  - tavrel_payment_status
+  - tavrel_prepare_payment
+  - tavrel_payment_intent
+  - tavrel_payment_task
 requires_env:
   - TAVREL_TASK_TOKEN
 

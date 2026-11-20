@@ -1,0 +1,14 @@
+import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+const filename = process.argv[2];
+if (!filename) throw new Error('Provide the downloaded policy-proof JSON filename.');
+const bytes = await readFile(filename, 'utf8');
+if (bytes.length > 100000) throw new Error('Proof artifact exceeds the supported size.');
+const child = spawn(process.execPath, ['tavrel/policy_proof.mjs'], { windowsHide: true, stdio: ['pipe','pipe','inherit'] });
+let output = '';
+child.stdout.on('data', chunk => { output += chunk; });
+child.stdin.end(JSON.stringify({ action: 'verify', bundle: JSON.parse(bytes) }));
+const code = await new Promise(resolve => child.on('exit', resolve));
+const result = JSON.parse(output);
+if (code !== 0 || !result.ok) throw new Error(result.error || 'Policy proof verification failed.');
+console.log(JSON.stringify(result.result, null, 2));

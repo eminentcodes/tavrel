@@ -7,7 +7,8 @@ from hermes_plugin import TavrelClient
 from tavrel.engine import Engine
 from tavrel.runtime import operator_key
 from tavrel.server import Gateway
-from tavrel.services import Receipt, SERVICES
+from tavrel.services import Receipt
+from tests.fixtures import SERVICES
 
 
 class RecordingService:

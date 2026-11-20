@@ -1,145 +1,299 @@
-# Tavrel
+<p align="center"><img src="frontend/public/tavrel-mark.svg" width="58" alt="Tavrel logo" /></p>
+<h1 align="center">Tavrel</h1>
+<p align="center">Agentic payments. On your terms.</p>
 
-Give a Hermes task a spending allowance, require approval for larger purchases, and keep a ledger of every attempt. Tavrel includes a native plugin, a local budget gateway, and an operator CLI.
+**Tavrel is an agent payment app.** Give an agent a spending allowance and approved recipients. It prepares payments, Tavrel checks your rules, and you sign eligible transfers in your wallet. Tavrel sends them on **zkVerify Volta** and follows them through finalized confirmation.
 
-The default gateway uses **real free services**: GitHub repository search, Crossref publication metadata, and local text extraction. Paid execution is disabled. A separate simulation demonstrates nonzero spending and budget limits. An allowance is a policy limit, not a deposit; Hermes model billing and tools outside Tavrel are outside its coverage.
+The app brings agents, recipients, approvals, and payment receipts into one place. You can browse before connecting a wallet; account operations ask you to sign in. Normal startup uses real APIs and starts with empty account data.
 
-## Try real research for $0
+## Table of contents
 
-Requires Python 3.11 or newer and internet access. No account, API key, payment, or Hermes installation is required:
+- [The problem](#the-problem)
+- [What we built](#what-we-built)
+- [How it works](#how-it-works)
+- [Judge Guide](#judge-guide)
+- [Getting started](#getting-started)
+- [Connecting an agent](#connecting-an-agent)
+- [zkVerify and test tokens](#zkverify-and-test-tokens)
+- [Optional policy proof](#optional-policy-proof)
+- [Architecture](#architecture)
+- [Tests and evidence](#tests-and-evidence)
+- [Capabilities and limits](#capabilities-and-limits)
+- [Project context and references](#project-context-and-references)
 
-```powershell
-python -m tavrel demo --live --output artifacts/live-demo-proof.json
+## The problem
+
+AI agents can request compute, data, and other services faster than a person can review each invoice. A wrong address, an amount outside the budget, or a retry of the same invoice can cause an expensive mistake.
+
+Tavrel is for developers and small teams delegating payment tasks to agents. The agent handles the instructions and follows payment progress. Deterministic code checks recipients and spending limits, while the person controls wallet signatures.
+
+For example, a team gives an agent **0.1 tVFY**, permits one service recipient, caps each payment at **0.03 tVFY**, and asks for review above **0.01 tVFY**. A **0.005 tVFY** invoice is ready to send. A **0.02 tVFY** invoice needs approval. An unknown recipient is blocked. Retrying the same invoice returns its existing request, including its eventual receipt.
+
+These examples use the sponsor's native test token. They demonstrate payment controls, rather than stablecoin purchasing or a commercial service integration.
+
+## What we built
+
+| Part | Behavior |
+| --- | --- |
+| Agents | A sender wallet, allowance, cap, approval threshold, approved recipients, pause/resume, and restricted API connection. |
+| Invoice task runner | Submit real invoice instructions, report decisions, link requests for review, and watch payment status. |
+| Rules engine | Exact 18-decimal amounts, atomic account/agent reservations, recipient checks, policy version checks, and stable retry keys. |
+| Approvals | Review the exact payment. Approval cannot bypass a budget or recipient rule. |
+| Wallet access | Server-verified Substrate signed-message login and revocable sessions. |
+| Payment execution | Live balance/fee review, wallet transfer signatures, cryptographic payload validation, durable native submission, and recovery. |
+| Settlement | Scan finalized blocks and match the transaction, sender, recipient, amount, success, and transfer event. |
+| Receipts | Explorer links and downloadable payment evidence with finalized block and transaction index. |
+| Optional proof | Generate a real FFLONK artifact for recipient membership and amount limits against a committed policy snapshot. |
+
+<p align="center"><img src="frontend/public/payment-preview.png" width="640" alt="Tavrel payment review" /></p>
+<p align="center"><sub>Product preview captured from the app with an isolated test account; it is not evidence of a live transfer.</sub></p>
+
+## How it works
+
+1. Set the shared account allowance and the agent's sender, recipients, cap, and review threshold.
+2. The agent submits an invoice with its recipient, decimal amount, purpose, and stable request key.
+3. Tavrel checks the rules. An eligible request reserves its principal; a prohibited request is recorded as blocked.
+4. Approve qualifying requests after reviewing their exact details. Rules are checked again if they change.
+5. Review the real network fee and balance. The wallet signs the exact native transfer payload.
+6. Tavrel verifies the signature and saves the signed transaction before submitting it. Recovery reuses those signed bytes.
+7. A matching successful transfer in a finalized block moves principal from reserved to spent. The request receives a downloadable receipt.
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Tavrel
+    participant Person
+    participant Wallet
+    participant Volta as zkVerify Volta
+    Agent->>Tavrel: Invoice and stable request key
+    Tavrel->>Tavrel: Check rules and reserve principal
+    Tavrel-->>Person: Exact payment review
+    Person->>Tavrel: Approve if required; request fee review
+    Tavrel->>Volta: Read balance, fee, nonce, finalized head
+    Person->>Wallet: Sign reviewed transfer
+    Wallet-->>Tavrel: Signature
+    Tavrel->>Tavrel: Verify and persist signed transaction
+    Tavrel->>Volta: Submit identical signed bytes
+    Tavrel->>Volta: Check finalized block and transfer events
+    Tavrel-->>Agent: Confirmed payment and receipt
 ```
 
-This retrieves five repository matches from GitHub, waits for request-bound operator approval before retrieving Crossref publications, extracts text locally, blocks a removed service permission, and reuses the original result on an identical retry. Expected final recorded cost and held amount: **$0.00**. Results carry the actual request endpoint, retrieval time, HTTP status, response hash, and provider request reference where available.
+The shared and agent allowances track **principal**, with available allowance equal to limit minus confirmed principal minus active reservations. Network fees are paid separately by the sender. Allowances are not deposits or wallet balances.
 
-Repository descriptions and publication metadata are provider data. The publication digest includes abstracts only when supplied by the publisher and does not retrieve full texts. The local summary extracts the first three sentences; it does not invoke a model. Free APIs can rate-limit or fail, and those failures stay visible rather than becoming simulated results.
+## Judge Guide
 
-The [live proof](artifacts/live-demo-proof.json) and [Hermes loader proof](artifacts/hermes-loader-proof.json) contain real free HTTP evidence. The latter also verifies actual Hermes discovery and registry dispatch. Neither proof runs a language-model session or establishes paid billing or payment settlement.
+This guide exercises the actual application and includes the agent's role. Wallet signing is a deliberate user action. Automated test fixtures are described separately under [Tests and evidence](#tests-and-evidence).
 
-## Try simulated spending
+### 1. Start the app and connect your wallet
 
-No runtime dependencies, account, API key, internet access, or Hermes installation are needed for the separate spending simulation:
+Follow [Getting started](#getting-started). Open `http://127.0.0.1:8787` and choose **Launch app**. Browsing works before connecting.
 
-```powershell
-python -m tavrel demo --output artifacts/demo-proof.json
+For a fresh installation, open the expiring **First wallet setup** link printed in the terminal. Connect a Substrate account in **SubWallet** or **Talisman** and sign the login message. Subsequent sign-ins use that registered wallet.
+
+Claim tVFY for the intended **sender** using the [Volta faucet](https://www.faucy.com/zkverify-volta). The sender needs funds for the amount, fee, and account minimum. Login alone needs no tokens.
+
+### 2. Configure a small payment task
+
+- In **Settings**, set the account allowance to `0.1` tVFY.
+- In **Agents**, create **Invoice assistant**.
+- Use your funded wallet's public Substrate address as the sender.
+- Set agent allowance `0.1`, per-payment cap `0.03`, and approval above `0.01`.
+- Add `service_vendor` with a second Substrate account's public address. Use an account you control for testing.
+
+### 3. See the agent in action
+
+Open the agent and choose **Agent connection → Create and download**. Keep the connection JSON private; creating it revokes the previous task token.
+
+Create your own `invoices.json`:
+
+```json
+[
+  {"recipient":"service_vendor","amount":"0.005","purpose":"First service invoice"},
+  {"recipient":"service_vendor","amount":"0.02","purpose":"Compute invoice requiring review"}
+]
 ```
 
-The demo creates a temporary gateway, invokes the plugin's tool handlers over HTTP, and checks the full workflow:
+Use the agent ID and connection filename shown by the app:
 
-1. Create a $2.50 task with approval required above $1.
-2. Settle a $0.24 search brief automatically.
-3. Hold a $1.60 report while waiting for operator approval.
-4. Approve that exact report and record its simulated receipt.
-5. Block another $1.60 report before execution.
-6. Retry the original brief and return the same receipt without another charge.
+```bash
+python -m tavrel.agent TASK_ID --connection TASK_ID-connection.json --file invoices.json --key judge-invoices --watch 600
+```
 
-Expected final balance: **$1.84 simulated spend, $0 held, $0.66 available**. The saved proof contains no access tokens. This exercises the plugin handlers; it does not run a Hermes model session.
+The runner submits the invoices, reports their decisions, and prints links to the payment requests. It watches status changes while you review and sign. It has no approval or signing permission.
 
-## Run the operator workflow
+Expected result: the first invoice is **Ready to send**; the second **Needs approval**. This reserves `0.025` tVFY in principal across the two invoices.
 
-Start the gateway in one terminal:
+### 4. Complete a real payment
 
-```powershell
+Open the first request. Review the details, tick the confirmation box, and choose **Review fees**. Check the current transferable balance and estimated fee, then choose **Sign and send** and confirm the transfer in your wallet.
+
+Expected progression: **Sending → Awaiting confirmation → Confirmed**. Finality can take time. Keep the server running; the page may be closed and reopened.
+
+Open **View transaction** and compare the sender, recipient, amount, and finalized block. **Download receipt** exports the evidence. The confirmed principal moves from reserved to spent exactly once.
+
+### 5. Check approval, blocking, and retries
+
+- Open the second invoice through **Approvals**, review it, and approve or deny it. Approval makes it eligible for wallet signing; denial releases its hold.
+- Try a payment of `0.031` to `service_vendor`: it must be blocked by the cap.
+- Try a payment to a checksum-valid address absent from the recipient list: it must be blocked before signing.
+- Repeat the agent command with the same file and `--key judge-invoices`: it returns the existing payment IDs and does not send a second transaction.
+- Change an amount under the same key: Tavrel rejects the conflict.
+- Change rules before signing an older request: its previous review cannot authorize a changed policy version.
+
+### 6. Inspect evidence and the optional proof
+
+Use the ledger, explorer links, and downloaded receipts. A node's submission response alone is not settlement evidence.
+
+If the optional proving artifacts have been built, choose **Generate policy proof** after fee review. Download and verify that artifact using [Optional policy proof](#optional-policy-proof). The app displays a real local proof reference; it does not invent an on-chain zkVerify proof transaction.
+
+## Getting started
+
+Requirements: **Python 3.11+**, **Node 24.22.1+**, npm, and a Substrate browser wallet for account actions. Node's version matches the requirement of `zkverifyjs@3.4.0`.
+
+```bash
+git clone https://github.com/eminentcodes/tavrel.git
+cd tavrel
+python -m pip install -e .
+npm ci
+npm run build
 python -m tavrel serve
 ```
 
-In another terminal, from the same project directory:
+Open the printed address, normally `http://127.0.0.1:8787`. The build produces the frontend and bundled Node helpers. Runtime data lives in `.tavrel/`, which is excluded from Git. Use a different `--data-dir` for a separate installation.
 
-```powershell
-python -m tavrel services
-$tavrelTask = python -m tavrel task create "Agent research" --budget 0 --approval 0 --require-approval --allow "search_brief,research_report,summary" --json | ConvertFrom-Json
-$tavrelPending = python -m tavrel request $tavrelTask.task.id --service search_brief --query "topic:ai-agents" --key repository_research --json | ConvertFrom-Json
-python -m tavrel inspect $tavrelPending.id
-python -m tavrel approve $tavrelPending.id
-python -m tavrel status
-python -m tavrel ledger --task $tavrelTask.task.id
-```
+The first-wallet setup link expires after 15 minutes. Restart an unconfigured server for a new link. Sessions expire after 30 minutes, survive page reloads, and are revoked by Disconnect. Neither the app nor the agent receives a private key.
 
-The task has a zero allowance and requires approval before every request. GitHub is contacted only after the operator approves the exact query. To permit later free requests automatically, run `python -m tavrel task policy TASK_ID --no-require-approval`. Publication requests use `--service research_report --query "autonomous AI agents"`; local extraction uses `--service summary` with the text as the query.
+The server currently binds to loopback. A public HTTPS service and competition transport are separate deployment work, not a feature silently enabled by this command.
 
-Approval prints the exact input and maximum cost and asks you to type `APPROVE` in an interactive terminal. A scripted decision requires `--confirm` with the exact `approval_hash` obtained from inspection. A fingerprint identifies a request; operator authentication still authorizes the action. `deny` releases a pending reservation.
+## Connecting an agent
 
-The default free workspace allowance is **$0** across all tasks; the simulation defaults to $25. Change an allowance with `python -m tavrel account --budget 10`; this changes policy and does not enable paid services. Pause a task with `python -m tavrel task policy TASK_ID --pause`; resume with `--resume`. Use `--allow ""` to remove all service permissions. Task-token rotation uses `python -m tavrel task token TASK_ID` and revokes the previous token for subsequent requests.
+Use the downloaded agent connection with the runner above, or call the HTTP API from an existing AI agent. The runner is a deterministic invoice task executor; it does not invoke or imitate a language model.
 
-All CLI amounts are dollars with at most two decimal places; the gateway stores integer cents. Threshold-based approval is required strictly **above** the threshold. A purchase equal to the threshold can proceed automatically if policy and allowances permit it. `--require-approval` instead asks before every request, including zero-cost requests.
+| Method | Task-scoped endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/v1/agent/payments/status` | Read this agent's allowance, policy, and requests. |
+| POST | `/v1/agent/payments/prepare` | Prepare one invoice using recipient, amount, purpose, and request key. |
+| POST | `/v1/agent/payments/task` | Submit an ordered task with a stable task key and 1–20 invoices. |
+| GET | `/v1/agent/payments/PAYMENT_ID` | Follow the request and its eventual receipt. |
 
-Runtime files live in `.tavrel/`: the SQLite ledger, `operator.key`, a process lock, and restricted task connection files. Tokens are saved locally rather than printed. Stop the gateway with Ctrl+C and start it again to reuse the ledger. `--data-dir PATH` and `--url ORIGIN` go before the subcommand; `serve --port PORT` selects a different port.
+Authenticate using the connection file's task token in `Authorization: Bearer TOKEN`. The token is restricted to its own agent. Keep connection files outside version control; do not give an agent access to the server's data directory.
 
-To operate the spending simulation, start `python -m tavrel --data-dir .tavrel/simulation serve --mode simulation` and use `--data-dir .tavrel/simulation` before each CLI subcommand. Modes have separate ledgers: a simulated ledger cannot be reopened as free, or vice versa. For an existing pre-extension `.tavrel` simulation ledger, keep using `serve --mode simulation`, or start free mode with a separate `--data-dir .tavrel/free`. Legacy migration preserves existing spend, holds, task tokens, and simulated receipt labels.
+Agents cannot modify policies, approve payments, create wallet sessions, request signing quotes, or submit signatures. The person uses the app for those operations.
 
-## Install the Hermes plugin
+## zkVerify and test tokens
 
-The distributable plugin is just `hermes_plugin/__init__.py` and `hermes_plugin/plugin.yaml`, using only Python's standard library. Its manifest and `register(ctx)` use the [documented Hermes interface](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins). Actual discovery, all three registry-dispatched tools, and `/budget` pass against unmodified official Hermes revision `e0f07847b8f38ac72890cf98e0d344c372ae7ee8`. A model-driven Hermes session remains unverified.
-
-The same two files are available in [the plugin archive](artifacts/tavrel-hermes-plugin.zip). Extract its `tavrel/` directory into the active profile's user-plugin directory, or copy the source files as shown below. Rebuild the archive after plugin changes with `python scripts/package_plugin.py`.
-
-After creating a task, copy the two plugin files into the active Hermes profile's user-plugin directory. For the default profile on Windows:
-
-```powershell
-$tavrelPluginDirectory = Join-Path $env:USERPROFILE ".hermes/plugins/tavrel"
-New-Item -ItemType Directory -Force -Path $tavrelPluginDirectory | Out-Null
-Copy-Item -LiteralPath .\hermes_plugin\__init__.py -Destination $tavrelPluginDirectory
-Copy-Item -LiteralPath .\hermes_plugin\plugin.yaml -Destination $tavrelPluginDirectory
-$tavrelConnection = Get-Content -LiteralPath $tavrelTask.connection_file -Raw | ConvertFrom-Json
-$env:TAVREL_URL = $tavrelConnection.gateway_url
-$env:TAVREL_TASK_TOKEN = $tavrelConnection.task_token
-hermes plugins enable tavrel
-```
-
-Restart the Hermes gateway with these environment variables available to its process. If you use a different Hermes profile or operating system, use that profile's `plugins/tavrel/` directory. The Tavrel gateway must keep running. Environment changes in a terminal do not update an already-running Hermes process.
-
-The plugin exposes:
-
-| Tool or command | Purpose |
+| Property | Value |
 | --- | --- |
-| `tavrel_status` | Read the configured task's allowance, policy, and recent requests. |
-| `tavrel_purchase` | Request a connected service using an exact query and stable request key. |
-| `tavrel_receipt` | Read one request's status and result within the configured task. |
-| `/budget` | Show the task's current balance in Hermes. |
+| Network | zkVerify Volta testnet |
+| Asset | Native **tVFY**, 18 decimal places |
+| Transfer | `balances.transferKeepAlive` |
+| RPC | `https://volta-rpc.zkverify.io` for the server's native operations |
+| WebSocket | `wss://volta-rpc.zkverify.io` / `wss://zkverify-volta-rpc.zkverify.io` |
+| Genesis | `0xff7fe5a610f15fe7a0c52f94f86313fb7db7d3786e7f8acf2b66c11d5be7c242` |
+| Explorer | [Volta Subscan](https://zkverify-testnet.subscan.io) |
+| Faucet | [Faucy](https://www.faucy.com/zkverify-volta) |
 
-Example instruction for a Hermes session: "Check Tavrel's budget and service catalog. Search GitHub for agent frameworks with search_brief, and retrieve publication metadata with research_report. Cite the supplied sources. If a request needs approval, report its ID and wait. Reuse the same request key and exact arguments on retries."
+tVFY is a **test token**, not a stablecoin. The build uses the sponsor's native chain for actual payment submission and finality checks, rather than adding an unrelated EVM network.
 
-The task token is configured once per Hermes process. Sessions in that process share that task; per-session task selection is not implemented. Operators approve from the companion CLI. The plugin has no approval or policy-editing tool.
+The faucet currently asks you to connect a wallet and complete a CAPTCHA. Its displayed claim amount and availability can change. Official guidance: [Getting testnet tokens](https://docs.zkverify.io/overview/getting-started/get_testnet_tokens).
 
-## What the limits enforce
+## Optional policy proof
 
-Both task and workspace allowances include settled spend **plus reservations**. SQLite transactions atomically reserve the maximum before execution. Pending approvals consume available allowance immediately. Approval cannot increase the budget or override a removed service permission, a pause, or a changed price.
+The checkable claim is: **this exact payment's recipient belongs to the committed approved-recipient tree, and its positive amount fits the committed per-payment cap and remaining account/agent allowances.**
 
-A stable request key is unique within its task. Retrying identical arguments returns the existing request; different arguments conflict. Failed, denied, blocked, pending, executing, and uncertain requests are not new purchases. Use `tavrel_receipt` to check their status. A new key creates a separate purchase attempt.
+The circuit binds that claim to the sender, recipient, exact amount, approval fingerprint, and Volta genesis hash. A single Poseidon public commitment fits zkVerify's FFLONK verifier. The recipient tree and allowance values remain private in the proof artifact. The optional circuit supports up to **eight approved recipients**; ordinary payment policies support larger lists.
 
-Confirmed no-charge failures release their reservation; the free adapters explicitly report connection failures and rate limits as no-charge failures. Invalid receipts and unexpected exceptions retain the maximum as `uncertain`. At startup, interrupted `executing` requests become uncertain without automatic reexecution. A request interrupted before execution can resume through an identical retry, after another policy check.
+The proof establishes those checks against the supplied commitment. It does not independently authenticate the server's policy snapshot, enforce wallet policy on chain, prove external service delivery, or prove that a transfer settled. Settlement has its own chain receipt.
 
-An operator can reconcile an uncertain request after reviewing its outcome:
+Build the proving artifacts from the pinned public PSE ceremony file:
 
-```powershell
-python -m tavrel inspect REQUEST_ID
-python -m tavrel reconcile REQUEST_ID --cost 0 --reference "Reviewed local processing log" --note "The local operation had no external charge; its output could not be confirmed."
+```bash
+curl -fL https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080/ppot_0080_16.ptau -o ppot_0080_16.ptau
+npm run proof:setup -- ppot_0080_16.ptau
 ```
 
-The CLI asks for `RECONCILE` in an interactive operator terminal. A scripted action requires the exact `approval_hash` from inspection via `--confirm`. The recorded cost must fit the original reserved maximum; free services require zero. Reconciliation releases the unused reservation once, preserves an explicit **operator attestation**, and leaves the service output unverified. It never retries work, creates a synthetic successful result, or claims independently verified provider billing. Agent tokens cannot reconcile requests.
+Setup checks the file's pinned SHA-256, compiles the circuit, and derives the FFLONK key from the published PSE ceremony. It relies on that published ceremony; checksum verification is not an independent cryptographic recheck of its transcript. Add `--verify-ceremony` to recheck the full ceremony, including its expensive beacon computation, which can take hours. The manifest records whether that recheck completed. Large setup files and generated keys are excluded from Git.
 
-The HTTP gateway binds to loopback, checks Host and browser Origin, and uses separate operator and task bearer tokens. Task tokens cannot read another task, approve or reconcile requests, or change allowances. Clients refuse redirects and bypass environment proxies for loopback calls. Free-provider requests use an HTTPS origin/path allowlist, bounded responses, no authentication, and no redirects.
+After generating a payment proof in the app, verify its downloaded JSON:
 
-This is an application-level local proof. A Hermes process with terminal or filesystem access under the operator's Windows account can read operator files or modify the ledger. Keeping the operator key out of tool arguments does not create operating-system isolation. A future live deployment needs a separately isolated gateway, exclusive provider credentials, verified adapter price ceilings, and authoritative billing reconciliation. The local simulators perform no signing or settlement; receipts are synthetic evidence.
-
-## Verify
-
-```powershell
-python -W error::ResourceWarning -m unittest discover -s tests -v
-python -m tavrel demo --output artifacts/demo-proof.json
-python -m tavrel demo --live --output artifacts/live-demo-proof.json
+```bash
+node scripts/verify-policy-proof.mjs PAYMENT_ID-policy-proof.json
 ```
 
-Tests cover concurrent task/workspace limits, retry execution, request-bound approval, approval of free requests, policy changes, uncertain outcomes, bounded reconciliation, ledger-mode migration, restart recovery, HTTP authorization, free-provider contracts, plugin registration, and CLI subprocesses. Automated service fixtures stay local; the live demo is a separate explicit network check.
+Run `npm run proof:check` for actual proof generation, verification after JSON key reordering, and rejection of changed payment claims, proof data, and allowance overflows. These checks use isolated test instructions and make no chain calls.
 
-With a Hermes source checkout and its dependencies available in the current Python environment, reproduce actual loader verification using:
+Verification uses the public circuit key and manifest included in [proofs](proofs), and recomputes the public commitment and proof reference. Verifying a downloaded artifact does **not** require the large SRS or proving-key setup. A downloaded artifact's own `locally_verified` field is not trusted as verification.
 
-```powershell
-python scripts/verify_hermes.py --hermes-source PATH_TO_HERMES --live --output artifacts/hermes-loader-proof.json
+The bundle's SHA-256 reference identifies the actual artifact. `zkverify_transaction` stays `null` until a real proof transaction is submitted and verified; no submission is claimed merely from local verification or native tVFY settlement.
+
+## Architecture
+
+| Source | Responsibility |
+| --- | --- |
+| [frontend/src](frontend/src) | Landing, public Docs, agent management, recipients, approvals, ledger, wallet review, and receipts. |
+| [payments.py](tavrel/payments.py) | Exact units, budgets, reservation accounting, permissions, and review hashes. |
+| [settlement.py](tavrel/settlement.py) | Signing quotes, durable transaction records, recovery, expiry, and finality accounting. |
+| [native_rpc.mjs](tavrel/native_rpc.mjs) | Live metadata/balance/fee reads, signature inspection, native submission, finalized block/event scanning. |
+| [auth.py](tavrel/auth.py) | Registered wallet ownership, expiring login challenges, replay prevention, and revocable sessions. |
+| [agent.py](tavrel/agent.py) | Invoice task execution and status watching through restricted agent APIs. |
+| [server.py](tavrel/server.py) | App/API routes, authentication, origin checks, and reconciliation lifecycle. |
+| [proofs](proofs) | Optional payment-policy circuit and witness/commitment construction. |
+| [tests](tests) | Behavioral and cryptographic verification with isolated fixtures. |
+
+Python and SQLite provide the authorization boundary. Amounts are decimal text in SQLite and Python integers during atomic transactions, so 18-decimal values do not overflow SQLite's signed integer range. The browser wallet owns signing. Node helpers use current chain metadata and cryptographic primitives.
+
+The app routes are `/dashboard`, `/agents`, agent details/policies, `/vendors`, `/approvals`, `/ledger`, payment details, and `/settings`. `/docs` is public and linked from the landing navigation/footer.
+
+## Tests and evidence
+
+Run:
+
+```bash
+python -W error::ResourceWarning -m unittest discover -s tests
+node --test tests/native-signing.test.mjs
+npm run check:ui
+node scripts/check-native-rpc.mjs
+npm audit
 ```
 
-For the cached checkout used here, add `--hermes-source .cache/hermes-agent --hermes-deps .cache/hermes-deps`. Omit `--live` for offline registry verification with local extraction. The script creates a temporary Hermes profile, copies only the two plugin files, loads the actual upstream manager, dispatches registered tools, and invokes `/budget`. It does not start a model or alter the operator's existing Hermes profile.
+The backend verification covers payment rules, wallet login, standalone invoice execution, proof snapshot caching, and recovery. Signature tests reject changes to the call, nonce, mortality, genesis, runtime versions, tip, and signer. Settlement tests cover identical retries, restart recovery, uncertain node responses, finalized success/failure, forged receipt rejection, expiry, and exact-once principal accounting. Current counts and timings are in the verification record.
 
-See the [verification record](artifacts/verification.md) for observed results and remaining integration limits. ARCANUM supplied conceptual inspiration; no ARCANUM source code or assets were copied into this implementation.
+After proof setup, run `node --test tests/policy-proof.test.mjs` to check the actual compiled circuit's constraints and `npm run proof:check` to exercise the full FFLONK pipeline.
+
+| Evidence | What it establishes |
+| --- | --- |
+| [Verification record](artifacts/verification.md) | Commands, observed results, and their limits. |
+| [Native RPC check](artifacts/native-rpc-check.json) | Real Volta fee/balance/nonce/finality reads and signing-payload preparation; no signing or submission. |
+| [Sponsor SDK check](artifacts/zkverify-network-proof.json) | Live sponsor chain properties and an unsigned SCALE transfer round trip. |
+| [Browser record](artifacts/ui/frontend-proof.json) | App browsing, wallet message authentication, policy/approval flow, images, and responsive layout; the file labels its test provider and network coverage. |
+| [Settlement tests](tests/test_settlement.py) | Controlled RPC responses verify authorization, reservations, recovery, and receipt accounting. |
+| [Cryptographic tests](tests/native-signing.test.mjs) | Offline signatures verify against stored public chain payloads. |
+| [Policy proof checks](artifacts/policy-proof-check.json) | Twelve actual FFLONK generation/verification cases, including altered claims and allowance overflows. |
+| [Actual policy artifact](artifacts/payment-policy-proof.json) | A real locally verified proof from isolated test instructions; no on-chain proof or payment transaction. |
+
+Tests do not spend funds. A funded installed-wallet transfer must be confirmed by its user and checked on the explorer before claiming an observed live settlement. Controlled test receipts and product screenshots are not live transaction evidence.
+
+## Capabilities and limits
+
+- Transfers use a user's Substrate wallet and native Volta tVFY. Stablecoins, contract wallets, swaps, and commercial x402 service purchasing are not implemented.
+- Rules cover Tavrel's API. They do not constrain a wallet owner who sends directly elsewhere. Agents must be isolated from server credentials and files.
+- Every payment needs a wallet signature. Tavrel holds no private key and does not perform unattended signing.
+- A saved signature stays bound to its reviewed call, nonce, network, and mortal era. Uncertain outcomes retain reservations until finalized success, failure, or verified expiry.
+- Confirmed principal reduces the remaining allowance; fees are tracked separately when emitted by the chain.
+- The included agent runner uses actual invoice instructions and deterministic rules. Connecting a language model is optional; no model execution is fabricated.
+- Public hosting, competition authentication/transport, hackathon submission, and observed funded-wallet settlement are separate from the local implementation and automated test results.
+
+## Project context and references
+
+Built for [Agent Games Wildcard](https://agentgames.zkverify.io/events/wildcard) under agentic payments. This entry focuses on the useful problem, a reviewable working workflow, clear capability boundaries, and optional checkable policy evidence.
+
+Tavrel began as a task-spending prototype and was reworked into this standalone app. [ARCANUM](https://github.com/bunnyyxtan/ARCANUM), reviewed at commit `46d30739c675b54390061a2e39d52a30d447e41b`, informed the wallet access, policy, approval, ledger, and receipt workflows. Its Arc/USDC contracts were not copied or presented as native zkVerify functionality. Councils, contract-enforced caps, and anomaly indexing are not claimed here.
+
+- [zkVerify documentation](https://docs.zkverify.io/)
+- [zkverifyjs](https://github.com/zkVerify/zkverifyjs)
+- [SubWallet](https://www.subwallet.app/)
+- [Talisman](https://talisman.xyz/)
+- [PSE Perpetual Powers of Tau](https://github.com/privacy-scaling-explorations/perpetualpowersoftau)
+- [snarkjs](https://github.com/iden3/snarkjs) and [circomlib](https://github.com/iden3/circomlib)
+
+Dependency licenses apply to their respective code. The optional proof tooling uses GPL-licensed snarkjs/circomlib; compiler/setup outputs are generated from the linked source and published ceremony. No ARCANUM code or assets were reused.

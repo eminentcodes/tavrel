@@ -6,8 +6,22 @@ __pycache__/
 .venv/
 .tavrel/
 .cache/
+.tavrel-proofs/
 .env
 .env.*
+*-connection.json
+invoices.json
+*.ptau
+*.zkey
+*.wtns
+artifacts/payment-demo-proof.json
+artifacts/demo-proof.json
+artifacts/live-demo-proof.json
+artifacts/hermes-loader-proof.json
+artifacts/hermes-native-loader-proof.json
+artifacts/tavrel-hermes-plugin.zip
+artifacts/ui/*.png
+artifacts/ui/preview-capture.json
 !.env.example
 artifacts/*.webm
 artifacts/*.mp4
@@ -17,4 +31,6 @@ AGENTS.md
 agent.md
 projectplan*.md
 research/
+tavrel/web/
+tavrel/*.bundle.mjs
 

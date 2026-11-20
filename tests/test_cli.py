@@ -125,25 +125,14 @@ class CLITests(GatewayCase):
         second = GatewayLock(self.directory)
         second.close()
 
-    def test_demo_isolated_from_existing_workspace_and_proof_has_no_tokens(self):
-        proof_path = self.directory / "proof.json"
-        result = self.cli("demo", "--output", str(proof_path))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        proof_text = proof_path.read_text(encoding="utf-8")
-        proof = json.loads(proof_text)
-        self.assertEqual(proof["task"]["spent_cents"], 184)
-        self.assertEqual(proof["task"]["available_cents"], 66)
-        self.assertTrue(proof["idempotent_retry_same_id"])
-        self.assertEqual(proof["paid_calls"], 0)
-        self.assertFalse(proof["live_hermes_session"])
-        self.assertNotIn("task_token", proof_text)
-        self.assertNotIn("token_hash", proof_text)
-        self.assertNotIn(self.operator_token, proof_text)
-        self.assertEqual(len(self.engine.snapshot()["tasks"]), 1)
+    def test_production_rejects_demo_and_simulation_entry_points(self):
+        for arguments in (("demo",), ("payment", "demo"), ("serve", "--mode", "simulation"), ("serve", "--seed-demo")):
+            result = self.cli(*arguments)
+            self.assertEqual(result.returncode, 2, arguments)
 
     def test_serve_process_preserves_pending_reservations_and_refuses_duplicate(self):
         directory = self.directory / "server-lifecycle"
-        commands = [sys.executable, "-m", "tavrel", "--data-dir", str(directory), "serve", "--mode", "simulation", "--port", "0", "--quiet"]
+        commands = [sys.executable, "-m", "tavrel", "--data-dir", str(directory), "serve", "--port", "0", "--quiet"]
 
         def start():
             process = subprocess.Popen(commands, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
@@ -175,7 +164,7 @@ class CLITests(GatewayCase):
         try:
             operator_token = operator_key(directory)
             operator = TavrelClient(url, operator_token)
-            created = operator.request("POST", "/v1/operator/tasks", {"name": "Restart task", "limit_cents": 250, "threshold_cents": 100, "allowed_services": ["research_report"]})
+            created = operator.request("POST", "/v1/operator/tasks", {"name": "Restart task", "limit_cents": 250, "threshold_cents": 100, "allowed_services": ["research_report"], "require_approval": True})
             agent = TavrelClient(url, created["task_token"])
             pending = agent.request("POST", "/v1/agent/requests", {"service": "research_report", "payload": {"query": "Restart test"}, "request_key": "restart_report"})
             self.assertEqual(pending["status"], "pending_approval")
@@ -190,6 +179,6 @@ class CLITests(GatewayCase):
             operator = TavrelClient(url, operator_token)
             receipt = operator.request("GET", f"/v1/operator/requests/{pending['id']}")
             self.assertEqual(receipt["status"], "pending_approval")
-            self.assertEqual(operator.request("GET", "/v1/operator/status")["account"]["reserved_cents"], 160)
+            self.assertEqual(operator.request("GET", "/v1/operator/status")["account"]["reserved_cents"], 0)
         finally:
             stop(process, reader)

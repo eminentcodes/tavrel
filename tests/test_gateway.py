@@ -15,10 +15,11 @@ class GatewayTests(GatewayCase):
         finally:
             connection.close()
 
-    def test_health_is_public_and_clearly_simulated(self):
+    def test_health_is_public_and_describes_real_payment_interface(self):
         status, headers, body = self.raw("GET", "/health")
         self.assertEqual(status, 200)
-        self.assertEqual(body["result"]["mode"], "simulation")
+        self.assertEqual(body["result"]["network"], "zkverify-volta")
+        self.assertTrue(body["result"]["wallet_transfers_enabled"])
         self.assertEqual(headers["Cache-Control"], "no-store")
 
     def test_agent_cannot_approve_change_policy_or_read_operator_ledger(self):

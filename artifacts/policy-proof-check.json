@@ -1,0 +1,60 @@
+{
+  "observed_at": "2026-11-20T19:17:39.980Z",
+  "scope": "Real local FFLONK proof with isolated test payment instructions; no transaction or settlement",
+  "checks": [
+    {
+      "name": "valid generated artifact",
+      "passed": true
+    },
+    {
+      "name": "SQLite/download object-key ordering",
+      "passed": true
+    },
+    {
+      "name": "altered amount_units, with recalculated commitment and reference",
+      "passed": true
+    },
+    {
+      "name": "altered recipient, with recalculated commitment and reference",
+      "passed": true
+    },
+    {
+      "name": "altered sender, with recalculated commitment and reference",
+      "passed": true
+    },
+    {
+      "name": "altered approval_hash, with recalculated commitment and reference",
+      "passed": true
+    },
+    {
+      "name": "altered genesis_hash, with recalculated commitment and reference",
+      "passed": true
+    },
+    {
+      "name": "altered proof, with recalculated reference",
+      "passed": true
+    },
+    {
+      "name": "overflow: cap_units",
+      "passed": true
+    },
+    {
+      "name": "overflow: task_available_units",
+      "passed": true
+    },
+    {
+      "name": "overflow: account_available_units",
+      "passed": true
+    },
+    {
+      "name": "recipient outside approved tree",
+      "passed": true
+    }
+  ],
+  "reference": "sha256:a95cd109e9ae372f2bb6e4302313a5a7d8a882fa1f5e3e0ab731c0f63f966658",
+  "protocol": "fflonk",
+  "n_public": 1,
+  "source": "artifacts/payment-policy-proof.json",
+  "zkverify_transaction": null,
+  "funds_spent": 0
+}

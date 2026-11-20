@@ -27,7 +27,7 @@ def verify(source, dependencies=None, live=False, output_path=None):
     if dependencies:
         sys.path.insert(0, str(Path(dependencies).resolve()))
     sys.path.insert(0, str(ROOT))
-    from hermes_plugin import GatewayError, TavrelClient
+    from hermes_plugin import GatewayError, SCHEMAS, TavrelClient
     from tavrel.engine import Engine
     from tavrel.server import Gateway
 
@@ -70,8 +70,8 @@ def verify(source, dependencies=None, live=False, output_path=None):
             if len(plugins) != 1 or not plugins[0]["enabled"] or plugins[0].get("error"):
                 raise RuntimeError("Hermes did not load Tavrel successfully: " + json.dumps(plugins))
             names = sorted(name for name in registry.get_all_tool_names() if name.startswith("tavrel_"))
-            if names != ["tavrel_purchase", "tavrel_receipt", "tavrel_status"]:
-                raise RuntimeError("Hermes did not register all three Tavrel tools.")
+            if names != sorted(SCHEMAS):
+                raise RuntimeError("Hermes did not register all Tavrel tools.")
 
             def call(name, arguments):
                 raw = registry.dispatch(name, arguments, scope=manager.scope_key,
@@ -129,6 +129,48 @@ def verify(source, dependencies=None, live=False, output_path=None):
             blocked = call("tavrel_purchase", {"service": "research_report", "query": "Removed permission", "request_key": "hermes_blocked"})
             if blocked["status"] != "blocked":
                 raise RuntimeError("Removed service permission was not enforced.")
+            # Exercise the native tools through the upstream registry as well.
+            operator.request("PATCH", "/v1/operator/payments/account", {"budget": "10"})
+            operator.request("PATCH", f"/v1/operator/payments/policies/{task_id}", {
+                "sender": "0x" + "11" * 32, "budget": "10", "approval": "3", "per_payment": "7",
+                "recipients": {"compute_vendor": "0x" + "22" * 32}})
+            native_before = call("tavrel_payment_status", {})
+            if native_before["account"]["available_units"] != "10000000000000000000":
+                raise RuntimeError("Native payment allowance was not configured.")
+            routine_arguments = {"recipient": "compute_vendor", "amount": "2",
+                                 "purpose": "Routine compute invoice", "request_key": "hermes_native_routine"}
+            routine = call("tavrel_prepare_payment", routine_arguments)
+            if routine["status"] != "ready_for_signature":
+                raise RuntimeError("Routine native payment did not pass its policy.")
+            inspected_native = call("tavrel_payment_intent", {"payment_id": routine["id"]})
+            if inspected_native["id"] != routine["id"]:
+                raise RuntimeError("Native intent inspection returned another request.")
+            native_arguments = {"task_key": "hermes_native_batch", "payments": [
+                {"recipient": "compute_vendor", "amount": "6", "purpose": "Reviewable compute invoice"},
+                {"recipient": "0x" + "33" * 32, "amount": "1", "purpose": "Unknown recipient"}]}
+            native_task = call("tavrel_payment_task", native_arguments)
+            native_pending, native_blocked = native_task["intents"]
+            if native_pending["status"] != "pending_approval" or native_blocked["reason"] != "RECIPIENT_NOT_ALLOWED":
+                raise RuntimeError("Native batch approval/recipient rules did not hold.")
+            native_path = "/v1/operator/payments/" + native_pending["id"]
+            try:
+                TavrelClient(url, created["task_token"]).request("POST", native_path + "/decision",
+                    {"decision": "approve", "expected_hash": native_pending["approval_hash"]})
+            except GatewayError as error:
+                if error.status != 403:
+                    raise
+            else:
+                raise RuntimeError("A task token authorized native payment approval.")
+            native_approved = operator.request("POST", native_path + "/decision",
+                {"decision": "approve", "expected_hash": native_pending["approval_hash"]})
+            native_exported = operator.request("POST", native_path + "/export",
+                {"expected_hash": native_approved["approval_hash"]})
+            native_retry = call("tavrel_payment_task", native_arguments)
+            if [item["id"] for item in native_retry["intents"]] != [item["id"] for item in native_task["intents"]]:
+                raise RuntimeError("Native batch retry created new intents.")
+            native_after = call("tavrel_payment_status", {})
+            if native_after["account"]["reserved_units"] != "8000000000000000000" or native_after["settled_units"] != "0":
+                raise RuntimeError("Native holds or settlement evidence are incorrect.")
             command = get_plugin_command_handler("budget")
             if command is None:
                 raise RuntimeError("Hermes did not register /budget.")
@@ -150,6 +192,11 @@ def verify(source, dependencies=None, live=False, output_path=None):
                 "plugin_files_sha256": {name: hashlib.sha256((plugin_directory / name).read_bytes()).hexdigest()
                                         for name in ("__init__.py", "plugin.yaml")},
                 "registered_tools": names, "budget_command": budget,
+                "registry_dispatched_tools": names,
+                "native_payments": {"routine": routine, "task": native_task,
+                    "approved": native_approved, "exported": native_exported, "final": native_after,
+                    "retry_reused_intents": True, "agent_approval_rejected": True,
+                    "signing_performed": False, "broadcast_performed": False, "settlement_verified": False},
                 "task": after["task"], "summary_receipt": summary,
                 "pending_request": pending, "approved_receipt": approved,
                 "repository_receipt": repository, "blocked_request": blocked,
@@ -163,7 +210,7 @@ def verify(source, dependencies=None, live=False, output_path=None):
                 target = Path(output_path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(serialized, encoding="utf-8")
-            print(f"Hermes {revision[:12]} loaded Tavrel and registered all three tools and /budget.")
+            print(f"Hermes {revision[:12]} loaded Tavrel and dispatched all {len(names)} tools; /budget passed.")
             print("Registry dispatch, operator approval, removed permissions, and identical retry passed.")
             print(f"Free public API calls: {proof['live_public_api_calls']}; model calls: 0; recorded cost: $0.00.")
             if output_path:

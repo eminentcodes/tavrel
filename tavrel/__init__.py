@@ -1,4 +1,4 @@
-"""Tavrel: deterministic spending control for connected Hermes tools."""
+"""Tavrel: governed native zkVerify payment intents and connected-tool budgets."""
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 

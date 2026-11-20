@@ -1,0 +1,35 @@
+{
+  "network": "zkverify-volta",
+  "chain": "zkVerify Volta",
+  "sdk": "zkverifyjs@3.4.0",
+  "observed_at": "2026-11-19T15:13:14.381Z",
+  "properties": {
+    "isEthereum": false,
+    "ss58Format": 251,
+    "tokenDecimals": [
+      18
+    ],
+    "tokenSymbol": [
+      "tVFY"
+    ]
+  },
+  "genesis_hash": "0xff7fe5a610f15fe7a0c52f94f86313fb7db7d3786e7f8acf2b66c11d5be7c242",
+  "finalized_head": "0xb2c186b6195a56f6342b654b8712632069225aedcaa5cf7483abd966534fc3fd",
+  "runtime": {
+    "spec_name": "tzkv-runtime",
+    "spec_version": 2001000
+  },
+  "unsigned_call": {
+    "pallet": "balances",
+    "method": "transferKeepAlive",
+    "recipient_account_id": "0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d",
+    "amount_units": "1",
+    "call_hex": "0x040300d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d04",
+    "round_trip_verified": true
+  },
+  "signing_performed": false,
+  "broadcast_performed": false,
+  "settlement_verified": false,
+  "zk_proof_submitted": false,
+  "note": "Read-only live RPC and unsigned SCALE call construction. This is connectivity/metadata evidence, not payment or policy-proof evidence."
+}

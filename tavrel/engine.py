@@ -11,7 +11,7 @@ import sqlite3
 from typing import Any
 import uuid
 
-from .services import ProviderRejected, SERVICES, UncertainCharge
+from .services import ProviderRejected, UncertainCharge
 from .live_services import FREE_SERVICES
 
 
@@ -87,7 +87,7 @@ class Engine:
             legacy = db.execute("SELECT 1 FROM account LIMIT 1").fetchone()
             previous_mode = previous["value"] if previous else ("simulation" if legacy else self.mode)
             if previous_mode != self.mode:
-                raise PolicyError("database_mode_mismatch", f"This ledger belongs to {previous_mode}. Use --mode simulation for a simulated ledger, or a separate --data-dir for {self.mode}; existing receipts must keep their original billing mode.", 409)
+                raise PolicyError("database_mode_mismatch", f"This ledger belongs to {previous_mode}. Use a separate --data-dir for {self.mode}; existing receipts must keep their original billing mode.", 409)
             task_columns = {row["name"] for row in db.execute("PRAGMA table_info(tasks)")}
             if "require_approval" not in task_columns:
                 db.execute("ALTER TABLE tasks ADD COLUMN require_approval INTEGER NOT NULL DEFAULT 0")
@@ -435,30 +435,4 @@ class Engine:
             task = self.task(task_id, db)
             rows = db.execute("SELECT id,service_id,quote_cents,actual_cents,status,reason FROM requests WHERE task_id=? ORDER BY created_at DESC, rowid DESC LIMIT 10", (task_id,)).fetchall()
             return {"task": task, "requests": [dict(row) for row in rows], "services": self.service_list(), "mode": self.mode, "paid_execution_enabled": False, "coverage": "Only requests made through Tavrel's connected services. Native model calls and other tools are outside this gateway."}
-
-    def seed_demo(self):
-        if self.mode != "simulation":
-            raise PolicyError("simulation_required", "Demo seeding requires serve --simulation.")
-        with self.connection() as db:
-            if db.execute("SELECT 1 FROM tasks LIMIT 1").fetchone():
-                return
-        first = self.create_task("AI framework comparison", 800, 100, list(self.services), "Compare agent memory, integrations, and documented pricing.")["task"]["id"]
-        for index, query in enumerate(("Compare Hermes agent memory", "Compare agent extension systems", "Compare framework setup effort")):
-            self.purchase(first, "search_brief", {"query": query}, f"seed_search_{index}", "demo")
-        self.purchase(first, "research_report", {"query": "Prepare the full agent-framework comparison"}, "seed_pending_report", "demo")
-        second = self.create_task("Product launch brief", 500, 200, list(self.services), "Prepare a product positioning brief and supporting research.")["task"]["id"]
-        self.purchase(second, "search_brief", {"query": "Research agent-tool spending workflows"}, "seed_launch_search", "demo")
-        self.purchase(second, "research_report", {"query": "Draft a launch research brief for Tavrel"}, "seed_launch_report", "demo")
-        third = self.create_task("Weekly release digest", 40, 100, ["summary", "search_brief"], "Summarize a recurring release report with a small allowance.")["task"]["id"]
-        for index in range(3):
-            self.purchase(third, "summary", {"query": "The gateway checks every connected purchase. Operators can approve requests. Spend remains traceable to its task."}, f"seed_digest_{index}", "demo")
-        self.purchase(third, "search_brief", {"query": "Find additional release context"}, "seed_blocked", "demo")
-
-    def start_walkthrough(self):
-        if self.mode != "simulation":
-            raise PolicyError("simulation_required", "The spending walkthrough requires simulation mode.")
-        task = self.create_task("Competitor research walkthrough", 250, 100, list(self.services), "Research competitors with a $2.50 allowance and approval above $1.")["task"]
-        self.purchase(task["id"], "search_brief", {"query": "Find sources for a competitor comparison"}, "walkthrough_brief", "demo")
-        report = self.purchase(task["id"], "research_report", {"query": "Write the detailed competitor comparison"}, "walkthrough_report", "demo")
-        return {"task_id": task["id"], "request_id": report["id"]}
 

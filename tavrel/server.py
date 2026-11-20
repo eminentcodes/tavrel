@@ -4,9 +4,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
 import secrets
+from pathlib import Path
+import mimetypes
 from urllib.parse import parse_qs, urlsplit
 
 from .engine import Engine, PolicyError
+from .payments import PaymentLedger
+from .auth import WalletAuth
+from .settlement import Settlement
+from .proofs import PolicyProofs
 
 
 IDENTIFIER = re.compile(r"(?:tsk|req)_[a-f0-9]{16}")
@@ -26,9 +32,24 @@ class Gateway(ThreadingHTTPServer):
         if address[0] not in ("127.0.0.1", "localhost"):
             raise ValueError("This prototype binds only to loopback.")
         self.engine = engine
+        self.payments = PaymentLedger(engine)
+        self.wallet_auth = WalletAuth(engine)
+        self.settlement = Settlement(self.payments)
+        self.policy_proofs = PolicyProofs(self.settlement)
         self.operator_token = operator_token
         self.quiet = quiet
         super().__init__(address, Handler)
+
+    def serve_forever(self, poll_interval=0.5):
+        self.settlement.start()
+        try:
+            super().serve_forever(poll_interval)
+        finally:
+            self.settlement.close()
+
+    def server_close(self):
+        self.settlement.close()
+        super().server_close()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -45,6 +66,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
+        if getattr(self, "response_cookie", None):
+            self.send_header("Set-Cookie", self.response_cookie)
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
@@ -69,6 +92,8 @@ class Handler(BaseHTTPRequestHandler):
         return value[7:]
 
     def operator(self):
+        if not self.headers.get("Authorization") and self.server.wallet_auth.session(self.headers.get("Cookie")):
+            return
         token = self.bearer()
         if not token.isascii() or not secrets.compare_digest(token, self.server.operator_token):
             raise PolicyError("forbidden", "Operator access is required for this action.", 403)
@@ -121,10 +146,39 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/") or "/"
         method = self.command
         engine = self.server.engine
+        payments = self.server.payments
+        auth = self.server.wallet_auth
+        origin = "http://" + self.headers["Host"].lower()
+        if method == "GET" and path == "/v1/auth/status":
+            session = auth.session(self.headers.get("Cookie"))
+            return {"authenticated": bool(session), "account": session["account"] if session else None,
+                "configured": auth.configured(), "method": "Substrate signed-message login"}
+        if method == "POST" and path == "/v1/auth/challenge":
+            body = fields(self.body(), ("address",), ("ticket",))
+            return auth.challenge(origin=origin, **body)
+        if method == "POST" and path == "/v1/auth/verify":
+            body = fields(self.body(), ("challenge_id", "signature"))
+            result, self.response_cookie = auth.verify(origin=origin, **body)
+            return result
+        if method == "POST" and path == "/v1/auth/logout":
+            fields(self.body(), ())
+            self.response_cookie = auth.logout(self.headers.get("Cookie"))
+            return {"authenticated": False}
         if method == "GET" and path in ("/", "/health"):
-            return {"name": "Tavrel", "status": "ready", "mode": engine.mode, "paid_execution_enabled": False, "interface": "Hermes plugin and operator CLI", "note": "Simulated services." if engine.mode == "simulation" else "Real free public APIs and local processing. No paid service is enabled."}
+            return {"name": "Tavrel", "status": "ready", "network": "zkverify-volta", "interface": "Agent payment app and task-scoped API", "wallet_transfers_enabled": True}
         if path.startswith("/v1/agent/"):
             task_id = engine.authenticate_task(self.bearer())
+            if method == "GET" and path == "/v1/agent/payments/status":
+                return payments.status(task_id)
+            if method == "POST" and path == "/v1/agent/payments/prepare":
+                body = fields(self.body(), ("recipient", "amount", "purpose", "request_key"))
+                return payments.prepare(task_id, **body)
+            if method == "POST" and path == "/v1/agent/payments/task":
+                body = fields(self.body(), ("task_key", "payments"))
+                return payments.plan_batch(task_id, **body)
+            match = re.fullmatch(r"/v1/agent/payments/(pay_[a-f0-9]{16})", path)
+            if method == "GET" and match:
+                return payments.intent(match[1], task_id)
             if method == "GET" and path == "/v1/agent/status":
                 return engine.agent_status(task_id)
             if method == "POST" and path == "/v1/agent/requests":
@@ -136,6 +190,37 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/v1/operator/"):
             self.operator()
             query = parse_qs(parsed.query)
+            if method == "GET" and path == "/v1/operator/payments/status":
+                return {**payments.status(query.get("task_id", [None])[0]), 'proofs_available': self.server.policy_proofs.available()}
+            if method == "PATCH" and path == "/v1/operator/payments/account":
+                body = fields(self.body(), ("budget",))
+                return payments.set_account(**body)
+            if method == "POST" and path == "/v1/operator/payments/prepare":
+                body = fields(self.body(), ("task_id", "recipient", "amount", "purpose", "request_key"))
+                return payments.prepare(**body, actor="operator")
+            match = re.fullmatch(r"/v1/operator/payments/policies/(tsk_[a-f0-9]{16})", path)
+            if method == "PATCH" and match:
+                body = fields(self.body(), ("sender", "budget", "approval", "per_payment", "recipients"), ("require_approval",))
+                return payments.configure(match[1], **body)
+            match = re.fullmatch(r"/v1/operator/payments/(pay_[a-f0-9]{16})(/decision|/export|/quote|/submit|/proof)?", path)
+            if match:
+                if method == "GET" and not match[2]:
+                    return payments.intent(match[1])
+                if method == "POST" and match[2] == "/decision":
+                    body = fields(self.body(), ("decision", "expected_hash"))
+                    return payments.decide(match[1], **body)
+                if method == "POST" and match[2] == "/export":
+                    body = fields(self.body(), ("expected_hash",))
+                    return payments.export(match[1], **body)
+                if method == "POST" and match[2] == "/quote":
+                    body = fields(self.body(), ("expected_hash",))
+                    return self.server.settlement.quote(match[1], **body)
+                if method == "POST" and match[2] == "/submit":
+                    body = fields(self.body(), ("expected_hash", "quote_id", "signature"), ("signed_hex",))
+                    return self.server.settlement.submit(match[1], **body)
+                if method == "POST" and match[2] == "/proof":
+                    body = fields(self.body(), ("expected_hash",))
+                    return self.server.policy_proofs.generate(match[1], **body)
             if method == "GET" and path == "/v1/operator/status":
                 return engine.snapshot(query.get("task_id", [None])[0])
             if method == "GET" and path == "/v1/operator/services":
@@ -177,6 +262,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_request(self):
         try:
+            if self.serve_frontend():
+                return
             result = self.route()
         except PolicyError as exc:
             self.discard_body()
@@ -188,6 +275,41 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(500, {"ok": False, "error": {"code": "gateway_error", "message": "The gateway could not complete this request. Existing reservations remain held."}})
         else:
             self.respond(200, {"ok": True, "result": result})
+
+    def serve_frontend(self):
+        """Serve only built assets or known browser routes, with the API's host guard."""
+        if self.command != "GET":
+            return False
+        path = urlsplit(self.path).path
+        if path == "/health" or path.startswith("/v1/"):
+            return False
+        web = Path(__file__).parent / "web"
+        browser_route = path in {"/", "/connect", "/dashboard", "/agents", "/vendors", "/approvals", "/ledger", "/settings", "/docs"} or re.fullmatch(r"/(?:agents/tsk_[a-f0-9]{16}(?:/policy)?|payments/pay_[a-f0-9]{16})", path)
+        public_asset = path in {"/favicon.svg", "/tavrel-mark.svg", "/apple-touch-icon.png", "/payment-preview.png", "/ledger-preview.png"}
+        if not browser_route and not public_asset and not path.startswith("/assets/"):
+            return False
+        if not (web / "index.html").is_file():
+            return False
+        self.connection.settimeout(10)
+        self.guard_origin()
+        target = web / "index.html" if browser_route else web / path.lstrip("/")
+        target = target.resolve()
+        if not target.is_relative_to(web.resolve()) or not target.is_file():
+            raise PolicyError("not_found", "Asset not found.", 404)
+        body = target.read_bytes()
+        content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        self.wfile.write(body)
+        return True
 
     do_GET = handle_request
     do_POST = handle_request

@@ -1,0 +1,43 @@
+{
+  "observed_at": "2026-11-20T17:49:28.457Z",
+  "check": "Read-only real Volta fee and signing-payload preparation",
+  "fee_units": "2297965710000000",
+  "free_units": "0",
+  "transferable_units": "0",
+  "enough_funds": false,
+  "nonce": "0",
+  "finalized_height": 8149404,
+  "expires_height": 8149468,
+  "genesis_hash": "0xff7fe5a610f15fe7a0c52f94f86313fb7db7d3786e7f8acf2b66c11d5be7c242",
+  "call_hex": "0x040300121212121212121212121212121212121212121212121212121212121212121204",
+  "payload": {
+    "specVersion": "0x001e8868",
+    "transactionVersion": "0x00000001",
+    "address": "xpjztNMwdaEqGLJ6sH6p7WTnuyHHroUAw9HELRxdPNzKr2Efi",
+    "assetId": null,
+    "blockHash": "0xa33d8e1b557a4911c3a8bc58e7a4239d210653ae1e8c4cd7cdbdb4e17c11cf3a",
+    "blockNumber": "0x007c599c",
+    "era": "0xc501",
+    "genesisHash": "0xff7fe5a610f15fe7a0c52f94f86313fb7db7d3786e7f8acf2b66c11d5be7c242",
+    "metadataHash": null,
+    "method": "0x040300121212121212121212121212121212121212121212121212121212121212121204",
+    "mode": 0,
+    "nonce": "0x00000000",
+    "signedExtensions": [
+      "CheckNonZeroSender",
+      "CheckSpecVersion",
+      "CheckTxVersion",
+      "CheckGenesis",
+      "CheckMortality",
+      "CheckNonce",
+      "CheckWeight",
+      "ChargeTransactionPayment",
+      "CheckMetadataHash"
+    ],
+    "tip": "0x00000000000000000000000000000000",
+    "version": 4,
+    "withSignedTransaction": false
+  },
+  "transfer_signed": false,
+  "transfer_submitted": false
+}

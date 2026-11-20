@@ -1,36 +1,53 @@
-# Tavrel local verification
+# Tavrel verification
 
-Verified through 2026-11-11 00:09, Africa/Lagos time (WAT), using Windows and Python 3.13.
+Verified on 20 November 2026, Africa/Lagos (WAT), using Windows, Python 3.13, and Node 22.22.2. Documented installation requires Node 24.22.1+ to satisfy the sponsor SDK's engine requirement; the earlier sponsor SDK check used Node 24.22.1.
 
-The gateway/plugin/operator CLI supports real free research and a separate spending simulation. All **71 behavioral tests pass**, including real gateway-process startup/restart, bounded reconciliation, and migration without reinterpreting simulated costs. The actual Hermes loader discovers Tavrel and its real registry executes all three tools; `/budget` works. No language model, paid API, wallet signing, or payment settlement was used.
+Tavrel implements actual wallet transfer payloads, cryptographic signature validation, durable native submission, finalized reconciliation, and receipt accounting. Production startup has empty account data and no simulation catalog. **No funded installed-wallet transaction was signed or broadcast during these checks.** Settlement behavior was tested with controlled RPC responses; live Volta fee/balance/nonce/finality reads were verified separately.
 
 | Check | Observed result |
 | --- | --- |
-| `python -W error::ResourceWarning -m unittest discover -s tests -v` | 71 tests passed in 57.672 seconds; no resource warnings in the final output. |
-| `python -m tavrel demo --output artifacts/demo-proof.json` | Exit 0; 184 cents simulated spend, zero held, 66 cents available; identical retry returned the same request. |
-| `python -m tavrel demo --live --output artifacts/live-demo-proof.json` | Exit 0; five real GitHub repositories, five Crossref publications after operator approval, local extraction, permission blocking, and cached retry evidence. Zero recorded cost and hold. |
-| `python scripts/verify_hermes.py --hermes-deps .cache/hermes-deps --live --output artifacts/hermes-loader-proof.json` | Exit 0 against official Hermes revision `e0f07847b8f38ac72890cf98e0d344c372ae7ee8`; real discovery, all three registry-dispatched tools, `/budget`, two free public API calls, operator-only approval, permission blocking, and identical retry passed. |
-| `python scripts/package_plugin.py` | Archive rebuilt; exact two-file contents, archive integrity, and equality to plugin source verified. |
-| `python -m compileall -q tavrel hermes_plugin tests scripts` | Exit 0. |
-| Artifact integrity and sanitization | All three proofs contain no task tokens or token hashes; Hermes proof fingerprints and the two-file archive exactly match the current plugin source. Paid calls and wallet payments are zero; the Hermes verifier's model-call count is zero. |
-| `git -C .cache/hermes-agent status --porcelain` | Empty output; the upstream source checkout used for verification is unmodified. |
+| `python -W error::ResourceWarning -m unittest discover -s tests -v` | **117 tests passed** in 145.910 seconds. Includes standalone invoice HTTP/CLI checks, payment rules, wallet login, scoped access, proof snapshot lifecycle, recovery, and finalized receipt accounting. |
+| `node --test tests/native-signing.test.mjs tests/policy-proof.test.mjs` | **Ten tests passed**. Actual offline signatures reject changed call, nonce, era, genesis, runtime versions, tip, and sender. Compiled WASM tests check valid witnesses, limits, commitment binding, canonical field values, and production approval hashes. |
+| `node scripts/check-native-rpc.mjs` | Real Volta genesis/token checks, balance, fee, nonce, finalized height, mortal era, and SCALE signing payload passed. No signing or submission. See [native RPC record](native-rpc-check.json). |
+| `node scripts/check-zkverify.mjs` | Sponsor SDK chain properties and unsigned native SCALE transfer round trip passed in the earlier recorded network check. See [sponsor SDK record](zkverify-network-proof.json). |
+| `node scripts/setup-policy-proof.mjs` | Compiled the circuit and derived a real FFLONK key from the pinned published PSE SRS. One public output; optional recipient tree supports eight accounts. Generated keys remain ignored. |
+| `npm run proof:check` | **Twelve actual FFLONK checks passed**: valid proof, JSON key reordering, changed amount/recipient/sender/review/genesis with recalculated commitments/references, altered proof, cap/agent/account overflows, and unknown recipient. See [proof check record](policy-proof-check.json). |
+| `node scripts/verify-policy-proof.mjs artifacts/payment-policy-proof.json` | The documented CLI independently verified the actual artifact's public commitment and SHA-256 reference. |
+| `npm run build` | Native RPC/wallet bundles and production Vite build passed. |
+| `node scripts/check-frontend.mjs` | Full browser flow passed, including restricted agent connection download, actual app-generated policy proof, downloaded proof verification, native wallet-message login, live fee review, images, and responsive layouts. No page errors. |
+| `npm audit --json` | **Zero vulnerabilities**. Patched `underscore` is pinned to 1.13.8. |
 
-The tests verify task and workspace budgets under competing requests, maximum-cost reservations, execution once under concurrent retries, approval fingerprints, policy changes, confirmed no-charge failures, invalid receipts, uncertain holds, restart recovery, task-token rotation, cross-task access, operator-only actions, Host/Origin checks, input bounds, redirect refusal, loopback proxy isolation, documented plugin registration signatures, and CLI subprocesses. The extension adds free HTTP receipt hashes, bounded provider responses, rate-limit/redirect/invalid-JSON handling, DOI/repository metadata, approval before free execution, explicit ledger-mode separation, legacy migration, and reconciliation through engine, HTTP, and CLI. Concurrent reconciliation commits the cost and releases the hold exactly once.
+The [browser record](ui/frontend-proof.json) covers normal gateway startup, native sr25519 login using an injected unfunded test wallet, persistent/revoked sessions, action-gated wallet access, policy creation, approval, real Volta fee review, insufficient-funds sign gating, images, and responsive layout. It also confirms the actual downloaded proof verified with reference `sha256:c4f7578f659f95ed9cdc45958da6e368932a83c9f889c283888d79d042102193`. An injected provider is not a tested installed wallet.
 
-Issues found and fixed during verification:
+## What the tests establish
 
-- A service price change after reservation reached execution and only failed receipt validation afterward. Execution now blocks the stale quote and releases the reservation before invoking the service.
-- Non-ASCII approval fingerprints and operator tokens caused comparison exceptions. They now return policy/authentication errors.
-- HTTP error/redirect responses needed explicit closure. Final resource checks pass.
-- On Windows, closing with a modest oversized unread request body could reset the connection before the client received its JSON error. The gateway now discards a bounded overflow before rejection; it still parses only bodies up to 64 KB.
-- Repeated urllib client construction loaded the Windows trust stores repeatedly. Loopback clients now reuse stateless handlers while retaining urllib's TLS verification defaults and disabled proxies.
-- An early authorization rejection could also close an unread POST/PATCH body and reset a Windows connection. The gateway now drains only bounded declared bytes before returning an error; it neither parses nor authorizes that rejected operation. Tests verify JSON rejections with bodies through 130 KB. Clients also preserve a structured HTTP rejection if the error body resets.
-- The new migration fixture initially left a SQLite connection open. The fixture now closes it explicitly after committing, and the final resource-warning run passes. A misplaced test boundary was corrected before the final passing run.
+- Amounts retain exact 18-decimal precision above SQLite's signed-integer range. Atomic account/agent reservations cannot overrun allowances under competing requests.
+- Approval binds the reviewed amount, sender, recipient, purpose, and policy version. Changed rules require a new review. Agent tokens cannot approve, change policies, request signing quotes, or submit signatures.
+- Signed bytes persist before submission. Restart and uncertain pool responses reuse those bytes; they do not create replacements or release reservations prematurely.
+- Controlled finalized receipts must match genesis, transaction, sender, recipient, amount, and success. Successful principal moves from held to spent once. Included failures release principal; expiry requires finalized scanning through the signed lifetime.
+- Proof caching follows the reviewed snapshot. Changed reservations invalidate proofs on fee re-review; submitting an earlier quote restores its snapshot. A snapshot changed while proving causes generation to fail without storing a reference.
+- The standalone invoice runner uses real HTTP routes and downloaded connection data. It reports ready/approval decisions, watches requests, and returns the same IDs on retry.
 
-The first restricted test runs failed to open and clean up their Windows temporary databases. The user approved running the local tests outside that sandbox. A later expanded run exposed a 15-second demo-test timeout and the oversized-body connection reset; both were addressed before the passing final run. The earlier session's demo startup error did not recur, so its historical cause remains unconfirmed.
+## Actual policy artifact and trust
 
-The [demo proof](demo-proof.json) is synthetic. The [live research proof](live-demo-proof.json) contains actual unauthenticated API retrieval evidence, and the [Hermes proof](hermes-loader-proof.json) records real upstream loader/registry behavior against the gateway. All are sanitized. The [plugin archive](tavrel-hermes-plugin.zip) contains only `tavrel/__init__.py` and `tavrel/plugin.yaml`; operator runtime data and Hermes source/dependencies are excluded.
+[payment-policy-proof.json](payment-policy-proof.json) contains a real FFLONK proof from isolated test instructions. Its reference is:
 
-Reconciliation in this build is explicitly an operator attestation, bounded by the original maximum. It does not independently verify provider billing, retry unknown work, or create verified service output. Free requests establish useful live integration and provenance; they cannot prove a paid-spend ceiling or payment settlement.
+`sha256:a95cd109e9ae372f2bb6e4302313a5a7d8a882fa1f5e3e0ab731c0f63f966658`
 
-Remaining milestones: a model-driven Hermes session, per-session task binding if needed, OS isolation of operator/provider access, authoritative live billing reconciliation, a verified paid-provider maximum-cost contract, and exact hackathon requirements. `hermes`, `ollama`, and `llama-server` are absent from PATH on this machine; the current proof uses the actual source loader without invoking a model. The user's current spending limit remains $0. No paid calls, transactions, deployment, or submission occurred.
+It binds the exact positive amount, recipient, sender, approval hash, and Volta genesis to a policy commitment containing recipient membership and cap/remaining allowances. It proves the supplied commitment. It does not independently authenticate the server's snapshot, prove service delivery, constrain unrelated wallet transfers, or prove settlement. The public key and manifest are included under `proofs/`; verification needs no SRS or proving-key setup. Source hashing normalizes line endings for Windows/Linux checkouts.
+
+The key uses the published [PSE power-16 ceremony file](https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080/ppot_0080_16.ptau), pinned to SHA-256 `ed3622a7c79b0b49aadd134ebbc5b77df8c8c59bccebdfd0d9bf2c1a51561cf9`. Default setup verifies that checksum and relies on the published ceremony. **Full cryptographic ceremony re-verification was not completed**; `--verify-ceremony` explicitly enables it. The manifest records `ceremony_reverified: false` for this run. Local proof verification does not remove the SRS trust assumption.
+
+`zkverify_transaction` is `null`: no on-chain proof submission is claimed. Native transfers and ZK verification are separate actions.
+
+## Corrections made during verification
+
+Volta codec properties needed JSON normalization, and WebSocket checks timed out; HTTPS native reads passed. Circom's Windows WASI bindings needed native Node paths; generated CommonJS helpers needed a package boundary. O2 compilation expanded the FFLONK representation beyond the downloaded SRS. O1 and an eight-recipient tree fit the pinned file while preserving the documented amount/recipient claim.
+
+Canonical object-key ordering now allows SQLite-stored/downloaded JSON to verify. Canonical uint128/field parsing rejects aliases. Snapshot tests exposed stale proof reuse across changed allowance reviews; atomic invalidation and generation-time checks fixed it. Browser verification exposed production approval hashes without a hex prefix; the witness builder now binds their exact bytes consistently, with a compiled-circuit regression check.
+
+Some Windows subprocess checks required approved execution outside the sandbox after EPERM errors. Final checks passed. Historical simulations/plugin archives are excluded from publication; controlled fixtures remain under tests and cannot populate production startup.
+
+## Remaining real-world verification
+
+A person must use an installed wallet funded with faucet tVFY, confirm **Sign and send**, and compare the finalized explorer transaction with the downloaded receipt. That outcome is not claimed by offline signatures, fixture receipts, fee quotes, or screenshots. No paid calls, funding, tool-initiated live transactions, deployment, or hackathon submission occurred.

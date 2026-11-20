@@ -1,0 +1,38 @@
+{
+  "name": "tavrel",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent payments with wallet signing and verified settlement on zkVerify",
+  "engines": { "node": ">=24.22.1" },
+  "overrides": { "underscore": "1.13.8" },
+  "scripts": {
+    "zkverify:check": "node scripts/check-zkverify.mjs",
+    "dev": "vite --config frontend/vite.config.js",
+    "build": "node scripts/build-rpc.mjs && vite build --config frontend/vite.config.js",
+    "check:ui": "node scripts/check-frontend.mjs",
+    "proof:setup": "node scripts/setup-policy-proof.mjs",
+    "proof:check": "node scripts/check-policy-proof.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.2.8",
+    "@phosphor-icons/react": "^2.1.10",
+    "@polkadot/api": "17.0.1",
+    "@polkadot/extension-dapp": "^0.61.7",
+    "@polkadot/util": "^14.0.1",
+    "@polkadot/util-crypto": "^14.0.1",
+    "circom2": "0.2.22",
+    "circomlib": "2.0.5",
+    "motion": "^12.23.24",
+    "poseidon-lite": "0.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "snarkjs": "0.7.6",
+    "zkverifyjs": "3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "playwright": "^1.56.1",
+    "vite": "^6.4.1"
+  }
+}

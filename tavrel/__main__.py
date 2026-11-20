@@ -1,4 +1,4 @@
-"""Operator CLI. Operator keys are never loaded by the Hermes plugin."""
+"""Account CLI. Server credentials stay separate from task-scoped agent access."""
 
 import argparse
 import json
@@ -7,12 +7,11 @@ import re
 import sys
 from urllib.parse import urlencode
 
-from hermes_plugin import GatewayError, TavrelClient
+from .client import GatewayError, TavrelClient
 
 from .engine import Engine, PolicyError
 from .runtime import GatewayLock, operator_key, read_task_connection, save_task_connection
 from .server import Gateway
-from .services import SERVICES
 
 
 def amount(value):
@@ -75,14 +74,12 @@ def print_receipt(value):
 
 
 def parser():
-    root = argparse.ArgumentParser(prog="tavrel", description="Task budgets, governed Hermes requests, and operator approvals. Live services are free; paid execution is disabled.")
+    root = argparse.ArgumentParser(prog="tavrel", description="Agent payments, spending rules, wallet signing, and finalized receipts.")
     root.add_argument("--url", default="http://127.0.0.1:8787", help="Gateway origin for CLI calls")
     root.add_argument("--data-dir", default=".tavrel", help="Local operator data directory; never share it with an agent for live use")
     commands = root.add_subparsers(dest="command")
     serve = commands.add_parser("serve", help="Start the loopback gateway")
     serve.add_argument("--port", type=int, default=8787)
-    serve.add_argument("--mode", choices=("live-free", "simulation"), default="live-free", help="Free public APIs by default; simulation is a separate spending walkthrough")
-    serve.add_argument("--seed-demo", action="store_true", help="Populate an empty workspace with labeled simulated requests")
     serve.add_argument("--quiet", action="store_true")
     status = commands.add_parser("status", help="Show workspace/task budgets and pending requests")
     status.add_argument("--task", dest="task_id")
@@ -143,34 +140,59 @@ def parser():
     request.add_argument("--query", required=True)
     request.add_argument("--key", required=True, help="Stable idempotency key; reuse it for a retry of the same request")
     request.add_argument("--json", action="store_true")
-    demo = commands.add_parser("demo", help="Run the complete plugin/gateway proof in an isolated temporary workspace")
-    demo.add_argument("--live", action="store_true", help="Use the real free GitHub/Crossref APIs and local extraction; no model or payment call")
-    demo.add_argument("--output", help="Save a proof JSON file containing no access credentials")
+    payment = commands.add_parser("payment", help="Native zkVerify Volta tVFY payment requests; send with your wallet in the app")
+    payment_commands = payment.add_subparsers(dest="payment_command", required=True)
+    payment_status = payment_commands.add_parser("status")
+    payment_status.add_argument("--task", dest="task_id")
+    payment_account = payment_commands.add_parser("account")
+    payment_account.add_argument("--budget", required=True, help="Exact decimal tVFY allowance, not a deposit")
+    payment_policy = payment_commands.add_parser("policy")
+    payment_policy.add_argument("task_id")
+    payment_policy.add_argument("--sender", required=True, help="Public native Substrate signing account; never a private key")
+    payment_policy.add_argument("--budget", required=True)
+    payment_policy.add_argument("--approval", required=True)
+    payment_policy.add_argument("--per-payment", required=True)
+    payment_policy.add_argument("--recipient", action="append", default=[], help="Approved NAME=SS58_ADDRESS; repeat for each recipient")
+    payment_policy.add_argument("--require-approval", action="store_true")
+    payment_prepare = payment_commands.add_parser("prepare")
+    payment_prepare.add_argument("task_id")
+    payment_prepare.add_argument("--recipient", required=True)
+    payment_prepare.add_argument("--amount", required=True)
+    payment_prepare.add_argument("--purpose", required=True)
+    payment_prepare.add_argument("--key", required=True)
+    payment_task = payment_commands.add_parser("task")
+    payment_task.add_argument("task_id")
+    payment_task.add_argument("--file", required=True, help="JSON array of recipient/amount/purpose instructions")
+    payment_task.add_argument("--key", required=True)
+    for name in ("inspect", "approve", "deny", "export"):
+        action = payment_commands.add_parser(name)
+        action.add_argument("payment_id")
+        if name != "inspect":
+            action.add_argument("--confirm", help="Exact approval_hash from payment inspect for a reviewed scripted operation")
     return root
 
 
 def run(args):
     directory = Path(args.data_dir).resolve()
+    if args.command == "payment":
+        return run_payment(args, directory)
     if args.command in (None, "serve"):
         port = getattr(args, "port", 8787)
         if not 0 <= port <= 65535:
             raise RuntimeError("Choose a port between 0 and 65535.")
-        simulation = getattr(args, "mode", "live-free") == "simulation"
-        if getattr(args, "seed_demo", False) and not simulation:
-            raise RuntimeError("--seed-demo requires --mode simulation.")
         lock = GatewayLock(directory)
         gateway = None
         try:
             key = operator_key(directory, create=True)
-            engine = Engine(directory / "ledger.sqlite3", SERVICES if simulation else None)
+            engine = Engine(directory / "ledger.sqlite3")
             gateway = Gateway(("127.0.0.1", port), engine, key, getattr(args, "quiet", False))
             engine.recover_interrupted()
-            if getattr(args, "seed_demo", False):
-                engine.seed_demo()
             print(f"Tavrel gateway ready at http://127.0.0.1:{gateway.server_address[1]}", flush=True)
-            notice = "SIMULATION: synthetic costs and results." if simulation else "FREE SERVICES: public GitHub/Crossref APIs and local text extraction."
-            print(f"{notice} Paid execution is disabled.", flush=True)
-            print(f"Operator key stored locally at {directory / 'operator.key'}; never copy it to Hermes.", flush=True)
+            if not gateway.wallet_auth.configured():
+                print(f"First wallet setup: http://127.0.0.1:{gateway.server_address[1]}/connect#setup={gateway.wallet_auth.pairing_ticket}", flush=True)
+                print("Open this one-time setup link and sign in with your native wallet. It expires in 15 minutes.", flush=True)
+            print("Native Volta payments enabled. Sign transfers in your wallet; Tavrel verifies finalized chain receipts.", flush=True)
+            print(f"CLI access key saved at {directory / 'operator.key'}; keep it separate from agent connections.", flush=True)
             print("Use another terminal for 'python -m tavrel task create' and other operator commands.", flush=True)
             try:
                 gateway.serve_forever(poll_interval=0.2)
@@ -180,10 +202,6 @@ def run(args):
             if gateway:
                 gateway.server_close()
             lock.close()
-        return 0
-    if args.command == "demo":
-        from .demo import run_demo, run_live_demo
-        (run_live_demo if args.live else run_demo)(args.output)
         return 0
     if args.command == "request":
         connection = read_task_connection(directory, args.task_id)
@@ -294,6 +312,70 @@ def run(args):
                 return 0
         result = client.request("POST", f"/v1/operator/requests/{args.request_id}/reconcile", {"actual_cents": args.cost, "reference": args.reference, "note": args.note, "expected_hash": request["approval_hash"]})
         output(result) if args.json else print_receipt(result)
+    return 0
+
+
+def run_payment(args, directory):
+    if args.payment_command in ("prepare", "task"):
+        connection = read_task_connection(directory, args.task_id)
+        client = TavrelClient(connection["gateway_url"], connection["task_token"])
+        if args.payment_command == "prepare":
+            result = client.request("POST", "/v1/agent/payments/prepare", {
+                "recipient": args.recipient, "amount": args.amount,
+                "purpose": args.purpose, "request_key": args.key})
+        else:
+            source = Path(args.file)
+            if source.stat().st_size > 32_768:
+                raise RuntimeError("Payment instruction files must be at most 32 KB.")
+            instructions = json.loads(source.read_text(encoding="utf-8"))
+            result = client.request("POST", "/v1/agent/payments/task", {"task_key": args.key, "payments": instructions})
+        output(result)
+        return 0
+    client = TavrelClient(args.url, operator_key(directory))
+    base = "/v1/operator/payments"
+    if args.payment_command == "status":
+        suffix = "?" + urlencode({"task_id": args.task_id}) if args.task_id else ""
+        result = client.request("GET", base + "/status" + suffix)
+    elif args.payment_command == "account":
+        result = client.request("PATCH", base + "/account", {"budget": args.budget})
+    elif args.payment_command == "policy":
+        recipients = {}
+        for item in args.recipient:
+            label, separator, address = item.partition("=")
+            if not separator or label in recipients:
+                raise RuntimeError("Provide unique recipient names as NAME=SS58_ADDRESS.")
+            recipients[label] = address
+        result = client.request("PATCH", base + "/policies/" + args.task_id, {
+            "sender": args.sender, "budget": args.budget, "approval": args.approval,
+            "per_payment": args.per_payment, "recipients": recipients,
+            "require_approval": args.require_approval})
+    else:
+        if re.fullmatch(r"pay_[a-f0-9]{16}", args.payment_id) is None:
+            raise RuntimeError("Provide a payment ID returned by Tavrel.")
+        path = base + "/" + args.payment_id
+        payment = client.request("GET", path)
+        if args.payment_command == "inspect":
+            output(payment)
+            return 0
+        if args.confirm is not None:
+            if args.confirm != payment["approval_hash"]:
+                raise RuntimeError("Confirmation does not match the exact payment intent and policy version.")
+        else:
+            output(payment)
+            if not sys.stdin.isatty():
+                raise RuntimeError("Inspect the payment first, then pass its exact approval_hash with --confirm, or use an interactive operator terminal.")
+            try:
+                confirmation = input(f"Type {args.payment_command.upper()} for this exact payment: ").strip()
+            except EOFError:
+                raise RuntimeError("No confirmation was received. No action submitted.") from None
+            if confirmation != args.payment_command.upper():
+                print("No action submitted.")
+                return 0
+        if args.payment_command == "export":
+            result = client.request("POST", path + "/export", {"expected_hash": payment["approval_hash"]})
+        else:
+            result = client.request("POST", path + "/decision", {"decision": args.payment_command, "expected_hash": payment["approval_hash"]})
+    output(result)
     return 0
 
 

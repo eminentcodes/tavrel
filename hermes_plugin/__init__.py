@@ -113,14 +113,51 @@ def make_handlers(client_factory=TavrelClient):
     def purchase(client, params):
         return client.request("POST", "/v1/agent/requests", {"service": params["service"], "payload": {"query": params["query"]}, "request_key": params["request_key"]})
 
+    def payment_receipt(client, params):
+        payment_id = params.get("payment_id", "")
+        if not isinstance(payment_id, str) or re.fullmatch(r"pay_[a-f0-9]{16}", payment_id) is None:
+            raise GatewayError("invalid_payment_id", "Provide the payment ID returned by Tavrel.")
+        return client.request("GET", "/v1/agent/payments/" + payment_id)
+
     return {
         "tavrel_status": wrap("tavrel_status", status),
         "tavrel_purchase": wrap("tavrel_purchase", purchase),
         "tavrel_receipt": wrap("tavrel_receipt", receipt),
+        "tavrel_payment_status": wrap("tavrel_payment_status", lambda client, params: client.request("GET", "/v1/agent/payments/status")),
+        "tavrel_prepare_payment": wrap("tavrel_prepare_payment", lambda client, params: client.request("POST", "/v1/agent/payments/prepare", params)),
+        "tavrel_payment_intent": wrap("tavrel_payment_intent", payment_receipt),
+        "tavrel_payment_task": wrap("tavrel_payment_task", lambda client, params: client.request("POST", "/v1/agent/payments/task", params)),
     }
 
 
 SCHEMAS = {
+    "tavrel_payment_status": {
+        "name": "tavrel_payment_status",
+        "description": "Read the bound task's native zkVerify Volta tVFY payment policy, approved recipients, and exact-unit holds. tVFY is a test token, not a stablecoin. No signing or broadcast is enabled. Payment allowances are separate from API-cost allowances.",
+        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    "tavrel_prepare_payment": {
+        "name": "tavrel_prepare_payment",
+        "description": "Prepare an exact native tVFY transfer intent through deterministic recipient and budget checks. Use an operator-approved recipient name or valid native Substrate address. Amount is a decimal string with at most 18 places. The operator approves and exports separately. Ready or exported does not mean paid. Reuse the exact request key and arguments on retries.",
+        "parameters": {"type": "object", "properties": {
+            "recipient": {"type": "string"}, "amount": {"type": "string"},
+            "purpose": {"type": "string", "minLength": 1, "maxLength": 1000},
+            "request_key": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,100}$"}},
+            "required": ["recipient", "amount", "purpose", "request_key"], "additionalProperties": False},
+    },
+    "tavrel_payment_intent": {
+        "name": "tavrel_payment_intent", "description": "Read one native payment intent within the bound task. An approval or unsigned call is not settlement evidence. This tool cannot approve, export, sign, or broadcast.",
+        "parameters": {"type": "object", "properties": {"payment_id": {"type": "string"}}, "required": ["payment_id"], "additionalProperties": False},
+    },
+    "tavrel_payment_task": {
+        "name": "tavrel_payment_task", "description": "Plan 1 to 20 native tVFY payments in order under the bound policy. Each receives an independent policy verdict and stable retry key; the batch is not an atomic payout. Reuse the task_key and ordered instructions exactly. This deterministic task executor invokes no language model and makes no transfers.",
+        "parameters": {"type": "object", "properties": {
+            "task_key": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,70}$"},
+            "payments": {"type": "array", "minItems": 1, "maxItems": 20, "items": {
+                "type": "object", "properties": {"recipient": {"type": "string"}, "amount": {"type": "string"}, "purpose": {"type": "string"}},
+                "required": ["recipient", "amount", "purpose"], "additionalProperties": False}}},
+            "required": ["task_key", "payments"], "additionalProperties": False},
+    },
     "tavrel_status": {
         "name": "tavrel_status",
         "description": "Read the bound Tavrel task's allowance, held reservations, policy, recent requests, and service catalog. Check each service's billing mode: the gateway supports free public APIs or an explicit simulation. Native Hermes model billing is outside its coverage.",

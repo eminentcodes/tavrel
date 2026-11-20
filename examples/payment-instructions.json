@@ -1,0 +1,4 @@
+[
+  { "recipient": "search_vendor", "amount": "2", "purpose": "Search service invoice" },
+  { "recipient": "compute_vendor", "amount": "6", "purpose": "Compute service invoice" }
+]

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tavrel"
-version = "0.2.0"
-description = "Task-scoped spending controls, a Hermes plugin, and an operator CLI"
+version = "0.3.0"
+description = "Agent payments with wallet signing, spending rules, and verified native settlement"
 requires-python = ">=3.11"
 dependencies = []
 
@@ -17,4 +17,5 @@ include = ["tavrel*", "hermes_plugin*"]
 
 [tool.setuptools.package-data]
 hermes_plugin = ["plugin.yaml"]
+tavrel = ["wallet_verify.mjs", "native_rpc.mjs", "native_signing.mjs", "*.bundle.mjs", "web/*", "web/assets/*"]
 

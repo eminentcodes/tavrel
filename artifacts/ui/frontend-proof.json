@@ -1,0 +1,61 @@
+{
+  "real_gateway": true,
+  "starts_empty": true,
+  "production_demo_mode": false,
+  "wallet_provider": "Injected test fixture, native sr25519 signature verified by the server",
+  "live_browser_wallet_tested": false,
+  "native_signature_verified": true,
+  "session_survived_reload": true,
+  "logout_revoked_session": true,
+  "policy_saved": true,
+  "payment_prepared": true,
+  "exact_review_required": true,
+  "approval": true,
+  "live_fee_review": true,
+  "insufficient_funds_prevents_signing": true,
+  "agent_connection_download_verified": true,
+  "policy_proof_reference": "sha256:c4f7578f659f95ed9cdc45958da6e368932a83c9f889c283888d79d042102193",
+  "downloaded_policy_proof_verified": true,
+  "transfer_signed": false,
+  "transfer_submitted": false,
+  "held_units": "6000000000000000000",
+  "settled_units": "0",
+  "landing_images": [
+    {
+      "src": "/tavrel-mark.svg",
+      "loaded": true
+    },
+    {
+      "src": "/payment-preview.png",
+      "loaded": true
+    },
+    {
+      "src": "/ledger-preview.png",
+      "loaded": true
+    },
+    {
+      "src": "/tavrel-mark.svg",
+      "loaded": true
+    }
+  ],
+  "static_policy_slider": true,
+  "top_launch_link_removed": true,
+  "desktop_nav_width": 370.546875,
+  "browse_without_wallet": true,
+  "operations_prompt_wallet": true,
+  "status_page_replaced_by_docs": true,
+  "documentation_sections": 10,
+  "wallet_modal_width": 420,
+  "wallet_modal_notes_removed": true,
+  "overview_manage_link_removed": true,
+  "responsive": [
+    1440,
+    768,
+    390,
+    375,
+    320
+  ],
+  "page_errors": [],
+  "signing_transfer": false,
+  "broadcast": false
+}
