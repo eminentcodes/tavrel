@@ -189,8 +189,7 @@ def run(args):
             engine.recover_interrupted()
             print(f"Tavrel gateway ready at http://127.0.0.1:{gateway.server_address[1]}", flush=True)
             if not gateway.wallet_auth.configured():
-                print(f"First wallet setup: http://127.0.0.1:{gateway.server_address[1]}/connect#setup={gateway.wallet_auth.pairing_ticket}", flush=True)
-                print("Open this one-time setup link and sign in with your native wallet. It expires in 15 minutes.", flush=True)
+                print("Connect your first wallet in the app and sign the login message.", flush=True)
             print("Native Volta payments enabled. Sign transfers in your wallet; Tavrel verifies finalized chain receipts.", flush=True)
             print(f"CLI access key saved at {directory / 'operator.key'}; keep it separate from agent connections.", flush=True)
             print("Use another terminal for 'python -m tavrel task create' and other operator commands.", flush=True)

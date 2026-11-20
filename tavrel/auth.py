@@ -64,20 +64,22 @@ class WalletAuth:
             row = db.execute("SELECT s.account FROM operator_sessions s JOIN operator_wallets w ON s.account=w.account WHERE s.token_hash=? AND s.expires>?", (digest(token), time.time())).fetchone()
             return {"account": row["account"]} if row else None
 
-    def challenge(self, address, origin, ticket=None):
+    def challenge(self, address, origin, ticket=None, *, browser_setup=False):
         account = account_id(address)
         valid_ticket = isinstance(ticket, str) and time.time() < self.pairing_expires and secrets.compare_digest(ticket, self.pairing_ticket)
         with self.engine.transaction() as db:
             registered = db.execute("SELECT 1 FROM operator_wallets WHERE account=?", (account,)).fetchone()
             has_owner = db.execute("SELECT 1 FROM operator_wallets LIMIT 1").fetchone()
-            if not registered and (has_owner or not valid_ticket):
-                raise PolicyError("operator_wallet_required", "Use your registered operator wallet. For first-time setup, open the wallet setup link printed by the local Tavrel app.", 403)
+            if not registered and has_owner:
+                raise PolicyError("operator_wallet_required", "Connect the wallet that was first used with this Tavrel account.", 403)
+            if not registered and not (valid_ticket or browser_setup):
+                raise PolicyError("operator_wallet_required", "Open the Tavrel app in your browser to connect your first wallet.", 403)
             db.execute("DELETE FROM wallet_challenges WHERE expires<?", (time.time(),))
             if db.execute("SELECT COUNT(*) AS count FROM wallet_challenges WHERE consumed=0").fetchone()["count"] >= 100:
                 raise PolicyError("too_many_challenges", "Too many sign-in requests. Wait for earlier requests to expire.", 429)
             challenge_id = secrets.token_hex(16)
             expires = time.time() + 300
-            message = ("Tavrel operator sign-in\n\n" + f"Origin: {origin}\nNetwork: zkverify-volta\nPublic account: {account}\n"
+            message = ("Tavrel sign-in\n\n" + f"Origin: {origin}\nNetwork: zkverify-volta\nPublic account: {account}\n"
                 + f"Nonce: {secrets.token_hex(32)}\nExpires at: {int(expires)}\n\n"
                 + "Sign this message to authenticate with Tavrel. This does not authorize a payment or move funds.")
             db.execute("INSERT INTO wallet_challenges(id,account,message,origin,expires,bootstrap) VALUES(?,?,?,?,?,?)",
@@ -102,7 +104,7 @@ class WalletAuth:
             registered = db.execute("SELECT 1 FROM operator_wallets WHERE account=?", (row["account"],)).fetchone()
             if not registered:
                 if not row["bootstrap"] or db.execute("SELECT 1 FROM operator_wallets LIMIT 1").fetchone():
-                    raise PolicyError("operator_wallet_required", "This wallet is not a registered operator.", 403)
+                    raise PolicyError("operator_wallet_required", "Connect the wallet that was first used with this Tavrel account.", 403)
                 db.execute("INSERT INTO operator_wallets VALUES(?,?)", (row["account"], time.time()))
             db.execute("UPDATE wallet_challenges SET consumed=1 WHERE id=?", (challenge_id,))
             db.execute("DELETE FROM operator_sessions WHERE expires<?", (time.time(),))

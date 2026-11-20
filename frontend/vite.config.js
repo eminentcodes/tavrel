@@ -12,7 +12,14 @@ export default defineConfig({
       '/v1': {
         target: 'http://127.0.0.1:8787', changeOrigin: true,
         configure(proxy) {
-          proxy.on('proxyReq', (request) => request.removeHeader('origin'));
+          proxy.on('proxyReq', (request, incoming) => {
+            // Preserve the browser's same-origin check across the local dev
+            // proxy. Other origins must reach the gateway unchanged and fail.
+            if (incoming.headers.origin === `http://${incoming.headers.host}`
+                && incoming.headers['sec-fetch-site'] === 'same-origin') {
+              request.setHeader('origin', 'http://127.0.0.1:8787');
+            }
+          });
         },
       },
     },

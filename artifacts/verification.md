@@ -6,7 +6,9 @@ Tavrel implements actual wallet transfer payloads, cryptographic signature valid
 
 | Check | Observed result |
 | --- | --- |
-| `python -W error::ResourceWarning -m unittest discover -s tests -v` | **117 tests passed** in 145.910 seconds. Includes standalone invoice HTTP/CLI checks, payment rules, wallet login, scoped access, proof snapshot lifecycle, recovery, and finalized receipt accounting. |
+| `python -W error::ResourceWarning -m unittest discover -s tests -v` | **117 tests passed** in 145.910 seconds on the earlier published `f2082c1` build. Includes standalone invoice HTTP/CLI checks, payment rules, wallet login, scoped access, proof snapshot lifecycle, recovery, and finalized receipt accounting. |
+| `python -m unittest tests.test_auth tests.test_gateway -v` | **17 tests passed** in 80.849 seconds after the first-wallet repair. Actual signatures register the first wallet through same-origin HTTP; missing browser provenance, task credentials, replay, and replacement of an existing owner are rejected. |
+| `node --test tests/wallet-connection.test.mjs` | **Four tests passed** after the selected-extension change. An unrelated unresponsive extension receives no request; unsupported accounts are filtered, rejection can be retried, and signing preserves the exact payload and expected sender. |
 | `node --test tests/native-signing.test.mjs tests/policy-proof.test.mjs` | **Ten tests passed**. Actual offline signatures reject changed call, nonce, era, genesis, runtime versions, tip, and sender. Compiled WASM tests check valid witnesses, limits, commitment binding, canonical field values, and production approval hashes. |
 | `node scripts/check-native-rpc.mjs` | Real Volta genesis/token checks, balance, fee, nonce, finalized height, mortal era, and SCALE signing payload passed. No signing or submission. See [native RPC record](native-rpc-check.json). |
 | `node scripts/check-zkverify.mjs` | Sponsor SDK chain properties and unsigned native SCALE transfer round trip passed in the earlier recorded network check. See [sponsor SDK record](zkverify-network-proof.json). |
@@ -17,7 +19,7 @@ Tavrel implements actual wallet transfer payloads, cryptographic signature valid
 | `node scripts/check-frontend.mjs` | Full browser flow passed, including restricted agent connection download, actual app-generated policy proof, downloaded proof verification, native wallet-message login, live fee review, images, and responsive layouts. No page errors. |
 | `npm audit --json` | **Zero vulnerabilities**. Patched `underscore` is pinned to 1.13.8. |
 
-The [browser record](ui/frontend-proof.json) covers normal gateway startup, native sr25519 login using an injected unfunded test wallet, persistent/revoked sessions, action-gated wallet access, policy creation, approval, real Volta fee review, insufficient-funds sign gating, images, and responsive layout. It also confirms the actual downloaded proof verified with reference `sha256:c4f7578f659f95ed9cdc45958da6e368932a83c9f889c283888d79d042102193`. An injected provider is not a tested installed wallet.
+The [browser record](ui/frontend-proof.json) covers normal gateway startup, native sr25519 login using an injected unfunded test wallet, persistent/revoked sessions, action-gated wallet access, policy creation, approval, real Volta fee review, insufficient-funds sign gating, images, and responsive layout. First-wallet registration needs no setup link; the selected extension connected and signed in **3.077 seconds** in the final automated run, while an unrelated unresponsive wallet received zero requests. New agent policies default to the connected sender, and the connected-wallet shortcut restores that address. The footer links to the Volta faucet. The actual downloaded proof verified with reference `sha256:e595b9811daf924617ca1120091123af87b492cea5ae72ee6b7132c1e10a896d`. An injected provider is not a tested installed wallet, and its timing does not establish installed-extension or human signing speed.
 
 ## What the tests establish
 
@@ -47,6 +49,10 @@ Volta codec properties needed JSON normalization, and WebSocket checks timed out
 Canonical object-key ordering now allows SQLite-stored/downloaded JSON to verify. Canonical uint128/field parsing rejects aliases. Snapshot tests exposed stale proof reuse across changed allowance reviews; atomic invalidation and generation-time checks fixed it. Browser verification exposed production approval hashes without a hex prefix; the witness builder now binds their exact bytes consistently, with a compiled-circuit regression check.
 
 Some Windows subprocess checks required approved execution outside the sandbox after EPERM errors. Final checks passed. Historical simulations/plugin archives are excluded from publication; controlled fixtures remain under tests and cannot populate production startup.
+
+The first-wallet test previously used a terminal setup URL, which hid the blocked onboarding path reported by the user. Direct same-origin enrollment now still requires a real signature and cannot replace an existing owner. Wallet selection avoids waiting for every installed extension. Decoder libraries load when the wallet modal opens, reducing the initial app bundle from the interim 756.81 kB to 479.49 kB. Account data finishes loading before sign-in exposes editable controls, fixing an allowance-field reset found during browser verification.
+
+An interim browser RPC request failed to fetch Volta data. The explicitly escalated read-only RPC retry passed, and the final full browser run passed live fee review and actual proof generation/download verification. No signing, broadcast, or settlement was inferred from these retries. The local production server was restarted with the authentication repair while preserving its ledger.
 
 ## Remaining real-world verification
 

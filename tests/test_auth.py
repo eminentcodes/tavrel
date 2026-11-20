@@ -3,11 +3,12 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
+from http.client import HTTPConnection
 from unittest import skipUnless
 
 from tavrel.auth import WalletAuth
 from tavrel.engine import PolicyError
-from tests.support import EngineCase
+from tests.support import EngineCase, GatewayCase
 
 
 @skipUnless(shutil.which('node') and Path('node_modules/@polkadot/util-crypto').exists(), 'Wallet authentication requires npm install and Node')
@@ -84,3 +85,49 @@ class WalletAuthTests(EngineCase):
             self.auth.challenge(other_account, self.origin, self.auth.pairing_ticket)
         # The original account can authenticate without the setup ticket.
         self.auth.challenge(self.account, self.origin)
+
+
+@skipUnless(shutil.which('node') and Path('node_modules/@polkadot/util-crypto').exists(), 'Wallet authentication requires npm install and Node')
+class WalletBrowserAuthTests(GatewayCase):
+    fixture = WalletAuthTests.fixture
+
+    def post(self, path, body, headers=None):
+        connection = HTTPConnection('127.0.0.1', self.gateway.server_address[1], timeout=15)
+        try:
+            connection.request('POST', path, json.dumps(body), {
+                'Content-Type': 'application/json', 'Origin': self.url,
+                'Sec-Fetch-Site': 'same-origin', **(headers or {})})
+            with connection.getresponse() as response:
+                return response.status, dict(response.getheaders()), json.loads(response.read())
+        finally:
+            connection.close()
+
+    def test_browser_registers_first_wallet_only_after_real_signature(self):
+        account = self.fixture()['account']
+        status, _, result = self.post('/v1/auth/challenge', {'address': account})
+        self.assertEqual(status, 200)
+        self.assertFalse(self.gateway.wallet_auth.configured())
+        challenge = result['result']
+        signed = self.fixture(challenge['message'])
+        status, headers, result = self.post('/v1/auth/verify', {
+            'challenge_id': challenge['challenge_id'], 'signature': signed['signature']})
+        self.assertEqual(status, 200)
+        self.assertTrue(result['result']['authenticated'])
+        cookie = headers['Set-Cookie']
+        self.assertEqual(self.gateway.wallet_auth.session(cookie)['account'], account)
+        other = self.fixture(label='other')['account']
+        status, _, result = self.post('/v1/auth/challenge', {'address': other})
+        self.assertEqual(status, 403)
+        self.assertEqual(result['error']['code'], 'operator_wallet_required')
+        self.assertEqual(self.gateway.wallet_auth.session(cookie)['account'], account)
+        self.assertEqual(self.post('/v1/auth/challenge', {'address': account})[0], 200)
+
+    def test_bootstrap_rejects_missing_browser_provenance_and_task_credentials(self):
+        account = '0x' + '12' * 32
+        for headers in ({'Origin': ''}, {'Sec-Fetch-Site': ''},
+                        {'Sec-Fetch-Site': 'cross-site'}, {'Origin': 'https://attacker.example'},
+                        {'Authorization': 'Bearer ' + self.task_token}):
+            with self.subTest(headers=headers):
+                self.assertEqual(self.post('/v1/auth/challenge', {'address': account}, headers)[0], 403)
+        self.assertFalse(self.gateway.wallet_auth.configured())
+        self.assertEqual(self.post('/v1/auth/challenge', {'address': account, 'browser_setup': True})[0], 400)

@@ -30,7 +30,7 @@ export function Landing() {
     <section className="sponsor-section"><Reveal className="sponsor-art"><GlassForms small /><div className="network-wordmark">zkVerify</div></Reveal><Reveal className="sponsor-copy"><h2>Built on<br />zkVerify.</h2><p>Bring clear rules and human approval to agent payment requests on zkVerify.</p></Reveal></section>
     <section className="faq-section"><Reveal><h2>A few good questions.</h2></Reveal><div className="faq-list">{questions.map(([question, answer], index) => <Reveal delay={index * 0.03} key={question}><details><summary>{question}<Plus size={19} /></summary><p>{answer}</p></details></Reveal>)}</div></section>
     <section className="final-cta"><GlassForms small /><Reveal><h2>Let agents work.<br />Keep the final say.</h2><ArrowCTA href="/dashboard">Launch app</ArrowCTA></Reveal></section>
-    <footer className="landing-footer"><Brand /><p>Controlled spending for autonomous agents.</p><div><Link href="/docs">Docs</Link><a href="https://docs.zkverify.io/" target="_blank" rel="noreferrer">Explore zkVerify <ArrowUpRight size={16} /></a><a href="https://github.com/eminentcodes/tavrel" target="_blank" rel="noreferrer">GitHub <ArrowUpRight size={16} /></a></div></footer>
+    <footer className="landing-footer"><Brand /><p>Controlled spending for autonomous agents.</p><div><Link href="/docs">Docs</Link><a href="https://www.faucy.com/zkverify-volta" target="_blank" rel="noreferrer">Get test tokens <ArrowUpRight size={16} /></a><a href="https://docs.zkverify.io/" target="_blank" rel="noreferrer">Explore zkVerify <ArrowUpRight size={16} /></a><a href="https://github.com/eminentcodes/tavrel" target="_blank" rel="noreferrer">GitHub <ArrowUpRight size={16} /></a></div></footer>
   </div>;
 }
 

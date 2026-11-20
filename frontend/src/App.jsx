@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, SquaresFour, Robot, Users, CheckCircle, ListBullets, GearSix, Plus, SignOut, Pause, Play, ArrowLeft, DownloadSimple, ArrowClockwise } from '@phosphor-icons/react';
 import { Landing } from './Landing.jsx';
 import { Connection } from './pages/Connection.jsx';
@@ -14,6 +14,7 @@ import { NewAgent } from './pages/NewAgent.jsx';
 import { Prepare } from './pages/Prepare.jsx';
 import { Docs } from './pages/Docs.jsx';
 import { request } from './api.js';
+import { rememberWallet } from './wallet.js';
 import { Link, Button, Status, Empty, Field, Modal, PageHead, PaymentTable, Address, GlassForms, Brand } from './components.jsx';
 
 const navigation = [
@@ -32,6 +33,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const loadedRoute = useRef('');
   const [modal, setModal] = useState(() => new URLSearchParams(window.location.hash.slice(1)).has('setup') ? { type: 'wallet' } : null);
   useEffect(() => {
     const onRoute = () => { setPath(window.location.pathname); setError(''); setNotice(''); setModal(null); window.scrollTo(0, 0); };
@@ -43,7 +45,9 @@ export function App() {
     setData({ ...payments, tasks: app.tasks, events: app.events });
   }, []);
   const enter = async (account) => {
-    await refresh(); setBusy(false); setSession({ account }); setError('');
+    await refresh();
+    loadedRoute.current = `${account}:${window.location.pathname}`;
+    setSession({ account }); setError('');
   };
   useEffect(() => {
     let active = true;
@@ -54,6 +58,9 @@ export function App() {
   }, []);
   useEffect(() => {
     if (!session || path === '/') return;
+    const routeKey = `${session.account}:${path}`;
+    if (loadedRoute.current === routeKey) return;
+    loadedRoute.current = routeKey;
     let active = true;
     refresh().catch(failure => { if (active) { if (failure.status === 401) { setSession(null); setData(initialData); } setError(failure.message); } });
     return () => { active = false; };
@@ -65,7 +72,7 @@ export function App() {
     catch (failure) { if (failure.status === 401) { setSession(null); setData(initialData); setModal({ type: 'wallet' }); } setError(failure.message); return null; }
     finally { setBusy(false); }
   }
-  async function leave() { await request('/v1/auth/logout', 'POST', {}); setSession(null); setData(initialData); }
+  async function leave() { await request('/v1/auth/logout', 'POST', {}); rememberWallet(null); loadedRoute.current = ''; setSession(null); setData(initialData); }
   function authorize(work) { if (session) work(); else setModal({ type: 'wallet' }); }
   function actionModal(value) { if (session) setModal(value); else setModal({ type: 'wallet' }); }
   if (path === '/') return <Landing />;
@@ -74,12 +81,12 @@ export function App() {
   const segments = path.split('/').filter(Boolean);
   const task = data.tasks.find(item => item.id === segments[1]);
   const policy = data.policies.find(item => item.task_id === segments[1]);
-  const props = { data, busy, mutate, setModal: actionModal, connected: !!session, authorize, refresh };
+  const props = { data, busy, mutate, setModal: actionModal, connected: !!session, walletAccount: session?.account, authorize, refresh };
   let page;
   if (path === '/dashboard' || path === '/connect') page = <Overview {...props} pending={pending} />;
   else if (path === '/agents') page = <Agents {...props} />;
   else if (segments[0] === 'agents' && !session) page = <Empty title="Agent details"><Button secondary onClick={() => setModal({ type: 'wallet' })}>Connect wallet</Button> to view this agent and manage its policy.</Empty>;
-  else if (segments[0] === 'agents' && task) page = segments[2] === 'policy' ? <Policy {...props} task={task} policy={policy} /> : <AgentDetail {...props} task={task} policy={policy} />;
+  else if (segments[0] === 'agents' && task) page = segments[2] === 'policy' ? <Policy key={task.id} {...props} task={task} policy={policy} /> : <AgentDetail {...props} task={task} policy={policy} />;
   else if (path === '/vendors') page = <Recipients {...props} />;
   else if (path === '/approvals') page = <><PageHead title="Approvals">A second look before the next step.</PageHead><div className="panel">{session ? <PaymentTable intents={pending} tasks={data.tasks} /> : <Empty title="Review agent requests">Connect your wallet when you are ready to view and approve your account's payments.</Empty>}</div></>;
   else if (path === '/ledger') page = <Ledger {...props} />;

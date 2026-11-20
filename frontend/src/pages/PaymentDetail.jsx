@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowRight, ArrowUpRight, ArrowLeft, DownloadSimple, ArrowClockwise } from '@phosphor-icons/react';
 import { request, amount, download } from '../api.js';
+import { signPayment } from '../wallet.js';
 import { Link, Button, Status, Empty, PageHead, Address } from '../components.jsx';
 
 export function PaymentDetail({ paymentId, data, busy, mutate, connected, authorize, refresh }) {
@@ -38,7 +39,6 @@ export function PaymentDetail({ paymentId, data, busy, mutate, connected, author
   }
   async function send() {
     await mutate(async () => {
-      const { signPayment } = await import('../wallet.js');
       const signature = await signPayment(quote.payload, payment.sender);
       return request(`/v1/operator/payments/${payment.id}/submit`, 'POST', { expected_hash: payment.approval_hash, quote_id: quote.quote_id, ...signature });
     }, 'Signed payment saved. Tavrel will submit it and check finalized chain history.');

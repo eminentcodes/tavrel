@@ -155,7 +155,13 @@ class Handler(BaseHTTPRequestHandler):
                 "configured": auth.configured(), "method": "Substrate signed-message login"}
         if method == "POST" and path == "/v1/auth/challenge":
             body = fields(self.body(), ("address",), ("ticket",))
-            return auth.challenge(origin=origin, **body)
+            # A first wallet can enroll from this loopback app after proving
+            # ownership. Browser provenance replaces the terminal setup link;
+            # it never grants a session or replaces an existing owner.
+            browser_setup = (self.headers.get("Origin") == origin
+                and self.headers.get("Sec-Fetch-Site") == "same-origin"
+                and not self.headers.get("Authorization"))
+            return auth.challenge(origin=origin, browser_setup=browser_setup, **body)
         if method == "POST" and path == "/v1/auth/verify":
             body = fields(self.body(), ("challenge_id", "signature"))
             result, self.response_cookie = auth.verify(origin=origin, **body)

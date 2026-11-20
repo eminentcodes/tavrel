@@ -88,7 +88,7 @@ This guide exercises the actual application and includes the agent's role. Walle
 
 Follow [Getting started](#getting-started). Open `http://127.0.0.1:8787` and choose **Launch app**. Browsing works before connecting.
 
-For a fresh installation, open the expiring **First wallet setup** link printed in the terminal. Connect a Substrate account in **SubWallet** or **Talisman** and sign the login message. Subsequent sign-ins use that registered wallet.
+Open the app, choose **Connect wallet**, select **SubWallet**, **Talisman**, or the **Polkadot extension**, and sign the login message with a Substrate account. Your first verified wallet becomes the account owner. Subsequent sign-ins use that wallet; no terminal setup link is needed.
 
 Claim tVFY for the intended **sender** using the [Volta faucet](https://www.faucy.com/zkverify-volta). The sender needs funds for the amount, fee, and account minimum. Login alone needs no tokens.
 
@@ -161,7 +161,7 @@ python -m tavrel serve
 
 Open the printed address, normally `http://127.0.0.1:8787`. The build produces the frontend and bundled Node helpers. Runtime data lives in `.tavrel/`, which is excluded from Git. Use a different `--data-dir` for a separate installation.
 
-The first-wallet setup link expires after 15 minutes. Restart an unconfigured server for a new link. Sessions expire after 30 minutes, survive page reloads, and are revoked by Disconnect. Neither the app nor the agent receives a private key.
+First-wallet registration requires a same-origin browser request to the loopback app and a valid wallet signature. It cannot replace an existing account owner. The app requests access only from the selected extension. Sessions expire after 30 minutes, survive page reloads, and are revoked by Disconnect. Neither the app nor the agent receives a private key.
 
 The server currently binds to loopback. A public HTTPS service and competition transport are separate deployment work, not a feature silently enabled by this command.
 
@@ -250,7 +250,7 @@ Run:
 
 ```bash
 python -W error::ResourceWarning -m unittest discover -s tests
-node --test tests/native-signing.test.mjs
+node --test tests/native-signing.test.mjs tests/wallet-connection.test.mjs
 npm run check:ui
 node scripts/check-native-rpc.mjs
 npm audit
@@ -268,6 +268,7 @@ After proof setup, run `node --test tests/policy-proof.test.mjs` to check the ac
 | [Browser record](artifacts/ui/frontend-proof.json) | App browsing, wallet message authentication, policy/approval flow, images, and responsive layout; the file labels its test provider and network coverage. |
 | [Settlement tests](tests/test_settlement.py) | Controlled RPC responses verify authorization, reservations, recovery, and receipt accounting. |
 | [Cryptographic tests](tests/native-signing.test.mjs) | Offline signatures verify against stored public chain payloads. |
+| [Wallet connection tests](tests/wallet-connection.test.mjs) | Only the selected extension receives an access request; unsupported accounts are filtered and payment payloads remain unchanged. |
 | [Policy proof checks](artifacts/policy-proof-check.json) | Twelve actual FFLONK generation/verification cases, including altered claims and allowance overflows. |
 | [Actual policy artifact](artifacts/payment-policy-proof.json) | A real locally verified proof from isolated test instructions; no on-chain proof or payment transaction. |
 

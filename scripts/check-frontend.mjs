@@ -12,12 +12,13 @@ await mkdir('artifacts/ui', { recursive: true });
 const directory = await mkdtemp(resolve('.cache/ui-verify-'));
 const gateway = spawn('python', ['-m', 'tavrel', '--data-dir', directory, 'serve', '--port', '9797', '--quiet'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
 let output = '';
+let startupError = '';
 gateway.stdout.on('data', bytes => { output += bytes.toString(); });
+gateway.stderr.on('data', bytes => { startupError += bytes.toString(); });
 let browser;
 try {
-  for (let attempt = 0; attempt < 100 && !output.includes('First wallet setup:'); attempt++) await new Promise(resolve => setTimeout(resolve, 100));
-  const setup = output.match(/First wallet setup: (\S+)/)?.[1];
-  if (!setup) throw new Error('The clean gateway did not become ready for wallet registration.');
+  for (let attempt = 0; attempt < 450 && gateway.exitCode === null && !output.includes('Native Volta payments enabled.'); attempt++) await new Promise(resolve => setTimeout(resolve, 100));
+  if (!output.includes('Native Volta payments enabled.')) throw new Error('The clean gateway did not become ready: ' + startupError + output);
   await cryptoWaitReady();
   const pair = sr25519PairFromSeed(blake2AsU8a('Tavrel browser verification fixture only'));
   const address = encodeAddress(pair.publicKey, 251);
@@ -29,10 +30,11 @@ try {
   page.on('response', response => { if (response.status() >= 400 && !response.url().includes('/v1/auth/')) badResponses.push({ status: response.status(), path: new URL(response.url()).pathname }); });
   await page.exposeFunction('tavrelFixtureSign', data => ({ signature: u8aToHex(sr25519Sign(u8aWrapBytes(hexToU8a(data)), pair)) }));
   await page.addInitScript(({ address }) => {
+    window.unselectedWalletRequests = 0;
     window.injectedWeb3 = { tavrelVerification: { version: '1', enable: async () => ({
       accounts: { get: async () => [{ address, name: 'Verification wallet', type: 'sr25519' }] },
       signer: { signRaw: ({ data }) => window.tavrelFixtureSign(data) },
-    }) } };
+    }) }, unselectedWallet: { enable: () => { window.unselectedWalletRequests++; return new Promise(() => {}); } } };
   }, { address });
   await page.goto(`${origin}/dashboard`);
   await page.getByRole('heading', { name: 'A clear view.' }).waitFor();
@@ -52,9 +54,15 @@ try {
   }
   await page.getByRole('button', { name: 'Save allowance', exact: true }).click();
   await page.getByRole('dialog', { name: 'Sign in with your wallet.' }).waitFor();
-  await page.goto(setup);
+  const connectionStarted = Date.now();
   await page.getByRole('dialog', { name: 'Sign in with your wallet.' }).getByRole('button', { name: 'Connect wallet', exact: true }).click();
+  await page.getByRole('button', { name: 'tavrelVerification', exact: true }).click();
   await page.getByRole('dialog', { name: 'Sign in with your wallet.' }).waitFor({ state: 'hidden' });
+  const connectionMilliseconds = Date.now() - connectionStarted;
+  process.stdout.write(`First wallet verified without a setup link in ${connectionMilliseconds}ms.\n`);
+  if (await page.evaluate(() => window.unselectedWalletRequests) !== 0) throw new Error('An unselected wallet was asked to connect.');
+  if (page.url().includes('setup=')) throw new Error('Wallet registration still depends on a setup link.');
+  await page.getByRole('link', { name: 'Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'A clear view.' }).waitFor();
   if (await page.getByText('Demo mode', { exact: true }).count()) throw new Error('A production demo mode is visible.');
   await page.reload();
@@ -69,7 +77,11 @@ try {
   await page.getByLabel('What will it do?', { exact: true }).fill('Prepare service invoices with defined payment limits.');
   await page.getByRole('button', { name: 'Create agent', exact: false }).click();
   await page.getByRole('heading', { name: 'The boundaries.' }).waitFor();
-  await page.getByLabel('Sender address', { exact: true }).fill(address);
+  const expectedSender = u8aToHex(pair.publicKey);
+  if (await page.getByLabel('Sender address', { exact: true }).inputValue() !== expectedSender) throw new Error('A new agent does not default to the connected sending wallet.');
+  await page.getByLabel('Sender address', { exact: true }).fill('0x' + '34'.repeat(32));
+  await page.getByRole('button', { name: 'Use connected wallet', exact: true }).click();
+  if (await page.getByLabel('Sender address', { exact: true }).inputValue() !== expectedSender) throw new Error('The connected-wallet shortcut does not restore the sender.');
   await page.getByLabel('Task allowance (tVFY)', { exact: true }).fill('10');
   await page.getByLabel('Per-payment cap (tVFY)', { exact: true }).fill('7');
   await page.getByLabel('Approval above (tVFY)', { exact: true }).fill('3');
@@ -131,6 +143,8 @@ try {
   await page.screenshot({ path: 'artifacts/ui/dashboard.png', fullPage: true });
   await page.goto(origin);
   await page.getByRole('heading', { level: 1 }).waitFor();
+  const faucetLink = page.locator('footer').getByRole('link', { name: 'Get test tokens', exact: false });
+  if (await faucetLink.getAttribute('href') !== 'https://www.faucy.com/zkverify-volta') throw new Error('The footer faucet link is missing or points to another network.');
   if (await page.locator('.landing-nav').getByText('Launch app', { exact: true }).count()) throw new Error('The top Launch app link remains.');
   for (const text of ['Agent-led preparation.', 'Exact-intent review', 'Durable decision history', 'Retries reuse the same intent']) {
     if (await page.getByText(text, { exact: true }).count()) throw new Error('Removed text remains: ' + text);
@@ -186,10 +200,11 @@ try {
   await writeFile('artifacts/ui/frontend-proof.json', JSON.stringify({ real_gateway: true, starts_empty: true, production_demo_mode: false,
     wallet_provider: 'Injected test fixture, native sr25519 signature verified by the server',
     live_browser_wallet_tested: false, native_signature_verified: true, session_survived_reload: true, logout_revoked_session: true,
-    policy_saved: true, payment_prepared: true, exact_review_required: true, approval: true, live_fee_review: true, insufficient_funds_prevents_signing: true,
+    first_wallet_connected_without_setup_link: true, unselected_wallet_requests: 0, connection_milliseconds: connectionMilliseconds,
+    policy_saved: true, sender_defaults_to_connected_wallet: true, connected_sender_shortcut: true, payment_prepared: true, exact_review_required: true, approval: true, live_fee_review: true, insufficient_funds_prevents_signing: true,
     agent_connection_download_verified: true, policy_proof_reference: policyProofReference, downloaded_policy_proof_verified: !!policyProofReference,
     transfer_signed: false, transfer_submitted: false, held_units: status.account.reserved_units, settled_units: status.settled_units,
-    landing_images: images, static_policy_slider: true, top_launch_link_removed: true, desktop_nav_width: navWidth,
+    landing_images: images, footer_test_token_link: 'https://www.faucy.com/zkverify-volta', static_policy_slider: true, top_launch_link_removed: true, desktop_nav_width: navWidth,
     browse_without_wallet: true, operations_prompt_wallet: true, status_page_replaced_by_docs: true,
     documentation_sections: 10, wallet_modal_width: walletWidth, wallet_modal_notes_removed: true,
     overview_manage_link_removed: true, responsive: [1440, 768, 390, 375, 320], page_errors: errors,
