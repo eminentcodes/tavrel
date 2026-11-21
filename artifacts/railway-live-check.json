@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-11-21T16:30:00Z",
+  "origin": "https://tavrel-production.up.railway.app",
+  "implementation_commit": "2c54a8098c8bb77e6e7134834478de581fcd2ac9",
+  "read_only": true,
+  "health_status": 200,
+  "health_ready": true,
+  "landing_html_status": 200,
+  "dashboard_html_status": 200,
+  "javascript_status": 200,
+  "stylesheet_status": 200,
+  "favicon_status": 200,
+  "auth_status": 200,
+  "anonymous_authenticated": false,
+  "anonymous_operator_status": 401,
+  "agent_handler": "/v1/agent/runs",
+  "anonymous_agent_status": 401,
+  "browser_review_completed": false,
+  "browser_note": "The browser navigation timed out waiting for networkidle; HTTP availability and assets were checked separately.",
+  "installed_wallet_login_tested": false,
+  "funded_transfer_tested": false,
+  "transactions_submitted": false
+}

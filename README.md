@@ -2,9 +2,8 @@
 <h1 align="center">Tavrel</h1>
 <p align="center">Agentic payments. On your terms.</p>
 
-**Tavrel is an agent payment app.** Give your agent exact invoice details. It checks recipients and spending limits, prepares each payment, and follows its outcome. Sign transfers in your wallet, or authorize a separate agent wallet to sign eligible payments automatically. Tavrel sends them on **zkVerify Volta** and checks finalized confirmation.
+**Tavrel is an agentic payments app built on zkVerify.** Give agents payment tasks and decide when human approval is needed. You can sign payments yourself or enable automatic payments, then track every request and confirmation in one place.
 
-The app brings agents, recipients, approvals, and payment receipts into one place. You can browse before connecting a wallet; account operations ask you to sign in. Normal startup uses real APIs and starts with empty account data.
 
 ## Table of contents
 
@@ -13,7 +12,6 @@ The app brings agents, recipients, approvals, and payment receipts into one plac
 - [How it works](#how-it-works)
 - [Judge Guide](#judge-guide)
 - [Getting started](#getting-started)
-- [Deploying on Railway](#deploying-on-railway)
 - [Connecting an agent](#connecting-an-agent)
 - [Invoice tasks](#invoice-tasks)
 - [Automatic agent-wallet payments](#automatic-agent-wallet-payments)
@@ -23,16 +21,13 @@ The app brings agents, recipients, approvals, and payment receipts into one plac
 - [Tests and evidence](#tests-and-evidence)
 - [Capabilities and limits](#capabilities-and-limits)
 - [Project context and references](#project-context-and-references)
+- [License](#license)
 
 ## The problem
 
-AI agents can request compute, data, and other services faster than a person can review each invoice. A wrong address, an amount outside the budget, or a retry of the same invoice can cause an expensive mistake.
+Delegating payments to an agent should not mean giving it unrestricted access to your money. A wrong recipient, a payment above your budget, or a repeated request can move funds you did not intend to spend.
 
-Tavrel is for developers and small teams delegating payment tasks to agents. The agent handles the instructions and follows payment progress. Deterministic code checks recipients and spending limits, while the person controls wallet signatures.
-
-For example, a team gives an agent **0.1 tVFY**, permits one service recipient, caps each payment at **0.03 tVFY**, and asks for review above **0.01 tVFY**. A **0.005 tVFY** invoice is ready to send. A **0.02 tVFY** invoice needs approval. An unknown recipient is blocked. Retrying the same invoice returns its existing request, including its eventual receipt.
-
-These examples use the sponsor's native test token. They demonstrate payment controls, rather than stablecoin purchasing or a commercial service integration.
+People need a way to let agents handle payment work while setting clear limits, approving sensitive requests, and checking what happened to each transfer. Tavrel brings those controls into one app.
 
 ## What we built
 
@@ -50,7 +45,7 @@ These examples use the sponsor's native test token. They demonstrate payment con
 | Receipts | Explorer links and downloadable payment evidence with finalized block and transaction index. |
 | Optional proof | Generate a real FFLONK artifact for recipient membership and amount limits against a committed policy snapshot. |
 
-<p align="center"><img src="frontend/public/payment-preview.png" width="640" alt="Tavrel payment review" /></p>
+![Tavrel payment review](https://raw.githubusercontent.com/eminentcodes/tavrel/main/frontend/public/payment-preview.png)
 <p align="center"><sub>Product preview captured from the app with an isolated test account; it is not evidence of a live transfer.</sub></p>
 
 ## How it works
@@ -63,83 +58,71 @@ These examples use the sponsor's native test token. They demonstrate payment con
 6. Tavrel verifies the signature and saves the signed transaction before submitting it. Recovery reuses those signed bytes.
 7. A matching successful transfer in a finalized block moves principal from reserved to spent. The request receives a downloadable receipt.
 
-```mermaid
-sequenceDiagram
-    participant Agent
-    participant Tavrel
-    participant Person
-    participant Wallet
-    participant Volta as zkVerify Volta
-    Agent->>Tavrel: Invoice and stable request key
-    Tavrel->>Tavrel: Check rules and reserve principal
-    Tavrel-->>Person: Exact payment review
-    Person->>Tavrel: Approve if required; request fee review
-    Tavrel->>Volta: Read balance, fee, nonce, finalized head
-    Person->>Wallet: Sign reviewed transfer
-    Wallet-->>Tavrel: Signature
-    Tavrel->>Tavrel: Verify and persist signed transaction
-    Tavrel->>Volta: Submit identical signed bytes
-    Tavrel->>Volta: Check finalized block and transfer events
-    Tavrel-->>Agent: Confirmed payment and receipt
-```
+![How Tavrel payments work](docs/payment-workflow.svg)
 
 The shared and agent allowances track **principal**, with available allowance equal to limit minus confirmed principal minus active reservations. Network fees are paid separately by the sender. Allowances are not deposits or wallet balances.
 
 ## Judge Guide
 
-This guide exercises the actual application and includes the agent's role. Wallet signing is a deliberate user action. Automated test fixtures are described separately under [Tests and evidence](#tests-and-evidence).
+Use the [live app](https://tavrel-production.up.railway.app) to try the workflow. You need a Substrate wallet such as **SubWallet** and **tVFY test tokens**. Sign-in needs no tokens.
 
-### 1. Start the app and connect your wallet
+### 1. Open the app and connect
 
-Follow [Getting started](#getting-started). Open `http://127.0.0.1:8787` and choose **Launch app**. For a hosted installation, open its HTTPS domain instead. Browsing works before connecting.
+Choose **Launch app**, then **Connect wallet**. Select your extension and account, and sign the login message. Your wallet opens its own account.
 
-Open the app, choose **Connect wallet**, select **SubWallet**, **Talisman**, or the **Polkadot extension**, and sign the login message with a Substrate account. On the hosted app, each wallet opens its own account. A local installation uses its first verified wallet for later sign-ins; no terminal setup link is needed.
+Get test tokens from the **Get test tokens** footer link or the [Volta faucet](https://www.faucy.com/zkverify-volta). Fund the wallet you plan to use as the sender.
 
-Claim tVFY for the intended **sender** using the [Volta faucet](https://www.faucy.com/zkverify-volta). The sender needs funds for the amount, fee, and account minimum. Login alone needs no tokens.
+### 2. Set up one agent
 
-### 2. Configure a small payment task
+In **Settings**, set your account allowance to **0.1 tVFY**. Then open **Agents**, create an agent, and save these payment rules:
 
-- In **Settings**, set the account allowance to `0.1` tVFY.
-- In **Agents**, create **Invoice assistant**.
-- Use your funded wallet's public Substrate address as the sender.
-- Set agent allowance `0.1`, per-payment cap `0.03`, and approval above `0.01`.
-- Add `service_vendor` with a second Substrate account's public address. Use an account you control for testing.
+| Setting | Value to try |
+| --- | --- |
+| Sender | Your funded wallet's public address |
+| Agent allowance | `0.1` tVFY |
+| Per-payment cap | `0.03` tVFY |
+| Approval above | `0.01` tVFY |
+| Recipient | Name it `test_recipient` and use a second wallet address you control |
 
-### 3. See the agent in action
+The allowance limits spending; it does not fund the wallet. Keep enough tokens for the payment and network fee.
 
-Open **Invoice assistant**. Under **Give your agent a task**, name the task **Service invoices** and fill in the first invoice. Choose **Add invoice** for the second:
+### 3. Start a payment task
 
-| Reference | Recipient | Amount (tVFY) | Purpose |
+Open your agent and find **Give your agent a task**. Name it **Payment check**, then enter these two payments. Use **Add invoice** for the second row:
+
+| Reference | Recipient | Amount | Purpose |
 | --- | --- | --- | --- |
-| `INV-001` | `service_vendor` | `0.005` | First service invoice |
-| `INV-002` | `service_vendor` | `0.02` | Compute invoice requiring review |
+| `CHECK-001` | `test_recipient` | `0.005` tVFY | Small payment |
+| `CHECK-002` | `test_recipient` | `0.02` tVFY | Payment needing approval |
 
-Choose **Start task**. The agent checks the payment rules, reads the invoices, and prepares each request. The activity and links come from the actual ledger. A missing or invalid field is rejected before any invoice is prepared. No model setup or API key is required.
+Choose **Start task**. The agent checks the details and rules, then prepares both requests. No model or API key is needed.
 
-Expected result: the first invoice is **Ready to send**; the second **Needs approval**. This reserves `0.025` tVFY in principal across the two invoices.
+**Check:** the first request says **Ready to send**. The second says **Needs approval**.
 
-### 4. Complete a real payment
+### 4. Approve and send
 
-Open the first request. Review the details, tick the confirmation box, and choose **Review fees**. Check the current transferable balance and estimated fee, then choose **Sign and send** and confirm the transfer in your wallet.
+Open the first payment, review its details, tick the confirmation box, and choose **Review fees**. If the balance is sufficient, choose **Sign and send** and confirm in your wallet.
 
-Expected progression: **Sending → Awaiting confirmation → Confirmed**. Finality can take time. Keep the server running; the page may be closed and reopened.
+For the second payment, open **Approvals**, approve the request, then review fees and sign it.
 
-Open **View transaction** and compare the sender, recipient, amount, and finalized block. **Download receipt** exports the evidence. The confirmed principal moves from reserved to spent exactly once.
+**Check:** each successful transfer progresses through **Sending → Awaiting confirmation → Confirmed**. Chain confirmation can take time; you can return to the payment later.
 
-### 5. Check approval, blocking, and retries
+### 5. Verify the result
 
-- Open the second invoice through **Approvals**, review it, and approve or deny it. Approval makes it eligible for wallet signing; denial releases its hold.
-- Try a payment of `0.031` to `service_vendor`: it must be blocked by the cap.
-- Try a payment to a checksum-valid address absent from the recipient list: it must be blocked before signing.
-- Submit another task with the same invoice references and details: it returns the existing payment IDs and does not prepare duplicate payments.
-- Change an amount under the same key: Tavrel rejects the conflict.
-- Change rules before signing an older request: its previous review cannot authorize a changed policy version.
+Open **Ledger**, select the confirmed payment, and choose **View transaction**. In the explorer, compare the **sender, recipient, amount, and transaction hash**, and check the finalized result. **Download receipt** saves the recorded evidence.
 
-### 6. Inspect evidence and the optional proof
+**Check:** the payment's principal is counted as spent once. The network fee is separate. A submission response alone is not a confirmed payment.
 
-Use the ledger, explorer links, and downloaded receipts. A node's submission response alone is not settlement evidence.
+### Extra checks
 
-If the optional proving artifacts have been built, choose **Generate policy proof** after fee review. Download and verify that artifact using [Optional policy proof](#optional-policy-proof). The app displays a real local proof reference; it does not invent an on-chain zkVerify proof transaction.
+| Action | Expected result |
+| --- | --- |
+| Request `0.031` tVFY with these rules | Blocked by the per-payment cap |
+| Use a valid recipient address absent from the allowed list | Blocked before signing |
+| Repeat the same reference and payment details | Returns the existing request without a duplicate payment |
+| Change the amount under the same reference | Rejects the conflicting request |
+
+If a request is blocked, read its reason, correct the rule or details, and create a new request with a new reference. If the sender needs tokens, use the faucet. For automated verification and known limits, see [Tests and evidence](#tests-and-evidence) and the [public Docs](https://tavrel-production.up.railway.app/docs).
 
 ## Getting started
 
@@ -156,48 +139,9 @@ python -m tavrel serve
 
 Open the printed address, normally `http://127.0.0.1:8787`. The build produces the frontend and bundled Node helpers. Runtime data lives in `.tavrel/`, which is excluded from Git. Use a different `--data-dir` for a separate installation.
 
-First-wallet registration requires a same-origin browser request to the loopback app and a valid wallet signature. It cannot replace an existing account owner. The app requests access only from the selected extension. Sessions expire after 30 minutes, survive page reloads, and are revoked by Disconnect. Your connected wallet's private key stays in its extension.
 
-If a wallet popup does not open, click the extension in your browser toolbar, unlock it, and check pending requests. SubWallet access requests use its native Substrate interface. Access and account-list requests time out after 45 seconds; the login-signature request times out after 90 seconds. Closing the modal stops the app from using late extension replies. Close any old pending wallet request before reconnecting; Tavrel does not automatically repeat signing or sign-in verification. The server warms and reuses its native signature verifier, and successful login returns the display address directly.
+This command starts the local app. You can also use the [live app](https://tavrel-production.up.railway.app).
 
-This command starts the local app. Use the hosted entrypoint below for Railway.
-
-## Deploying on Railway
-
-The repository includes a [Dockerfile](Dockerfile) and [Railway configuration](railway.json). Railway builds the frontend and bundled payment helpers, installs the Python app, and runs `python -m tavrel.hosted`. This avoids Railpack's Python auto-detection error, **No start command detected**. The frontend and API run together in one service.
-
-1. Deploy the latest `main` from this repository with the repository root as the service root. Railway should use the **Dockerfile** builder. Remove any old build or start command overrides so it uses the Dockerfile commands.
-2. Under **Networking**, generate a public HTTPS domain. Railway supplies `RAILWAY_PUBLIC_DOMAIN`; for a custom domain, set `TAVREL_PUBLIC_ORIGIN` to its full HTTPS origin, such as `https://payments.example.com`, without a path.
-3. Add a persistent volume mounted at **`/data`**. Keep **one replica**: wallet account registration, separate SQLite payment ledgers, sessions, reservations, and encrypted agent wallets belong to that volume.
-4. Set these service variables, then redeploy:
-
-| Variable | Value |
-| --- | --- |
-| `TAVREL_DATA_DIR` | `/data`, matching the volume mount. |
-| `TAVREL_WALLET_VAULT_KEY` | A stable Fernet encryption key for newly created automatic agent wallets. Generate it once using the command below. |
-| `TAVREL_PUBLIC_ORIGIN` | Optional when using Railway's generated domain; required for a custom domain. |
-
-Generate the vault key locally, then paste its output into Railway's private Variables settings:
-
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-Keep that key private and preserve it across deployments. Replacing it prevents existing agent wallets from decrypting. A Windows-created vault uses Windows profile encryption and cannot be moved to Linux merely by copying its files; create a separate hosted agent wallet instead.
-
-Railway supplies `PORT`; the app listens on `0.0.0.0`. The configured health check is `/health`. Successful startup logs `Tavrel ready at https://YOUR_DOMAIN`. Open that domain and connect your own wallet. A new deployment needs no preset wallet address.
-
-If Deploy Logs repeat **Set TAVREL_PUBLIC_ORIGIN to your HTTPS domain**, the image has built and the container is reaching Tavrel's startup. Under **Settings → Networking → Public Networking**, choose **Generate Domain**, targeting port **8080** unless you changed `PORT`. Copy the generated domain and set `TAVREL_PUBLIC_ORIGIN` to `https://` followed by that hostname in the service's **Variables** tab. For example, a generated hostname `tavrel-production-1234.up.railway.app` needs `https://tavrel-production-1234.up.railway.app`. Use your actual hostname, with no `/dashboard`, other path, or custom port. Apply the variable changes and redeploy. Railway's automatic `RAILWAY_PUBLIC_DOMAIN` also works when present; an explicitly set `TAVREL_PUBLIC_ORIGIN` takes precedence and must be valid.
-
-If an older image logs **Set TAVREL_OWNER_WALLET**, deploy the latest `main`. Public startup no longer requires this variable. Once startup succeeds, open `https://YOUR_DOMAIN/health`; it should return JSON with `status` equal to `ready`.
-
-Visitors and judges can browse without connecting. Signing in with a wallet creates or opens **that wallet's account**: its agents, recipients, allowances, approvals, invoices, and encrypted agent wallets are separate from other users. Task tokens route to the account that issued them and cannot approve or administer another user's account. No LLM calls or model API key are needed.
-
-An existing single-owner ledger stays associated with its registered wallet automatically; other users receive new empty accounts. `TAVREL_OWNER_WALLET` is optional only for assigning an old ledger that already contains data but has no registered owner. It does not restrict new public sign-ins. The local `python -m tavrel serve` command retains its existing single-account behavior and CLI access. Hosted account operations use signed wallet sessions.
-
-The default image supports invoice tasks, wallet login, manual transfers, automatic agent wallets, and receipt tracking. Optional **policy proof generation** requires separate local proving setup and is not included in this image. The app hides unavailable proof actions; native tVFY payments remain independent of that optional proof.
-
-Package and hosted authentication checks are linked under [Tests and evidence](#tests-and-evidence). A successful Railway deployment and a funded transfer still need to be observed on the deployed service.
 
 ## Connecting an agent
 
@@ -307,6 +251,8 @@ The bundle's SHA-256 reference identifies the actual artifact. `zkverify_transac
 
 ## Architecture
 
+![Tavrel architecture](docs/architecture.svg)
+
 | Source | Responsibility |
 | --- | --- |
 | [frontend/src](frontend/src) | Landing, public Docs, agent management, recipients, approvals, ledger, wallet review, and receipts. |
@@ -356,7 +302,8 @@ After proof setup, run `node --test tests/policy-proof.test.mjs` to check the ac
 | [Signature-worker tests](tests/test_wallet_verifier.py) | Actual signatures, changed claims, concurrent callers, worker recovery, and fail-closed timeouts. |
 | [Hosted tests](tests/test_hosted.py) | HTTPS domain validation, Railway health checks, pinned wallet ownership, actual message signatures, and Secure login/logout cookies. |
 | [Public account tests](tests/test_public_accounts.py) | Two actual wallet signatures, separate agents/allowances/invoices, cross-account rejection, token rotation, session/restart persistence, atomic registration rollback, and legacy migration/data preservation. |
-| [Packaged hosted runtime](artifacts/railway-package-check.json) | Built wheel starts without a preset owner outside the source tree, serves frontend assets, verifies a real wallet self-registration signature, and derives an agent-wallet address using bundled helpers without runtime node_modules. Docker/Railway deployment remains unobserved. |
+| [Packaged hosted runtime](artifacts/railway-package-check.json) | Built wheel starts without a preset owner outside the source tree, serves frontend assets, verifies a real wallet self-registration signature, and derives an agent-wallet address using bundled helpers without runtime node_modules. |
+| [Live app availability](artifacts/railway-live-check.json) | Railway health, public HTML/assets, and anonymous access checks passed. Installed-wallet login and funded transfers are separate checks. |
 | [Latest wallet browser record](artifacts/ui/wallet-connection-proof.json) | Modal-close cancellation, ignored late replies, retry, actual native-signature login, and removal of Cancel connection. Live balance and installed extension speed are outside this focused check. |
 | [Verifier timing record](artifacts/wallet-verifier-check.json) | Three cold and three reused native-verifier calls with an offline fixture; excludes extension and human signing time. Reproduce with `python scripts/check-wallet-verifier.py`. |
 | [Invoice task tests](tests/test_agent_runs.py) | Input validation, exact ledger outcomes, scoped access, duplicate references, crash recovery, cancellation, recipient binding, and retained historical runs. |
@@ -380,8 +327,6 @@ Tests do not spend funds. A funded installed-wallet transfer must be confirmed b
 
 Built for [Agent Games Wildcard](https://agentgames.zkverify.io/events/wildcard) under agentic payments. This entry focuses on the useful problem, a reviewable working workflow, clear capability boundaries, and optional checkable policy evidence.
 
-Tavrel began as a task-spending prototype and was reworked into this standalone app. [ARCANUM](https://github.com/bunnyyxtan/ARCANUM), reviewed at commit `46d30739c675b54390061a2e39d52a30d447e41b`, informed the wallet access, policy, approval, ledger, and receipt workflows. Its Arc/USDC contracts were not copied or presented as native zkVerify functionality. Councils, contract-enforced caps, and anomaly indexing are not claimed here.
-
 - [zkVerify documentation](https://docs.zkverify.io/)
 - [zkverifyjs](https://github.com/zkVerify/zkverifyjs)
 - [SubWallet](https://www.subwallet.app/)
@@ -389,4 +334,8 @@ Tavrel began as a task-spending prototype and was reworked into this standalone 
 - [PSE Perpetual Powers of Tau](https://github.com/privacy-scaling-explorations/perpetualpowersoftau)
 - [snarkjs](https://github.com/iden3/snarkjs) and [circomlib](https://github.com/iden3/circomlib)
 
-Dependency licenses apply to their respective code. The optional proof tooling uses GPL-licensed snarkjs/circomlib; compiler/setup outputs are generated from the linked source and published ceremony. No ARCANUM code or assets were reused.
+Dependency licenses apply to their respective code. The optional proof tooling uses GPL-licensed snarkjs/circomlib; compiler/setup outputs are generated from the linked source and published ceremony.
+
+## License
+
+Tavrel's source code is licensed under the [MIT License](LICENSE).

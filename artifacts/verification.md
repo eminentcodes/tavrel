@@ -1,5 +1,11 @@
 # Tavrel verification
 
+## Live Railway availability
+
+The [live app](https://tavrel-production.up.railway.app) responds after publication of `2c54a80`. Read-only HTTP checks returned **200** for `/health` with `status: ready`, landing/dashboard HTML, the current JavaScript/CSS, and favicon. Anonymous auth status is false; protected account and agent routes reject unauthenticated requests with **401**. The callable task handler is `POST /v1/agent/runs`, using the token from Agent connection. See the [availability record](railway-live-check.json).
+
+This verifies deployed startup and HTTP boundaries. The live browser's networkidle navigation timed out; installed-extension login and a funded transfer have not been verified by these checks. Payment and wallet behavior retain the isolated verification described below. No live test wallet was registered and no transaction was submitted.
+
 ## Public wallet accounts
 
 Hosted Tavrel now supports signed wallet self-registration with a separate payment ledger for each account. A fresh Railway deployment needs no preset `TAVREL_OWNER_WALLET`. The registered owner of an existing shared ledger retains that ledger, while new wallets receive empty accounts. The configured HTTPS origin, Secure cookies, signature binding, and same-origin registration checks remain enforced.
