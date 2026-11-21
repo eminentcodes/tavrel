@@ -64,6 +64,20 @@ def account_id(address):
     return "0x" + result.hex()
 
 
+def wallet_address(address):
+    """Display the same public account using Volta's checksum-valid SS58 prefix."""
+    key = bytes.fromhex(account_id(address)[2:])
+    prefix = 251
+    raw = bytes([((prefix & 0xfc) >> 2) | 0x40, (prefix >> 8) | ((prefix & 3) << 6)]) + key
+    raw += hashlib.blake2b(b'SS58PRE' + raw).digest()[:2]
+    value = int.from_bytes(raw, 'big')
+    encoded = ''
+    while value:
+        value, digit = divmod(value, 58)
+        encoded = ALPHABET[digit] + encoded
+    return encoded
+
+
 class PaymentLedger:
     """Reuse Engine's atomic SQLite boundary with separate exact-unit budgets.
 
@@ -124,6 +138,8 @@ class PaymentLedger:
             raise PolicyError("payment_policy_missing", "The operator must configure this task's payment policy first.", 409)
         result = dict(row)
         result["recipients"] = json.loads(result["recipients"])
+        result['sender_address'] = wallet_address(result['sender'])
+        result['recipient_addresses'] = {label: wallet_address(address) for label, address in result['recipients'].items()}
         result["require_approval"] = bool(result["require_approval"])
         result["available_units"] = str(int(result["limit_units"]) - int(result["reserved_units"]) - int(result["spent_units"]))
         return result
@@ -163,6 +179,8 @@ class PaymentLedger:
         result = dict(row)
         result.pop("intent_hash")
         result["amount"] = token_amount(result["amount_units"])
+        result['sender_address'] = wallet_address(result['sender'])
+        result['recipient_address'] = wallet_address(result['recipient'])
         result["network"] = NETWORK
         result["unsigned_call"] = json.loads(result["unsigned_call"]) if result["unsigned_call"] else None
         result["transaction"] = None

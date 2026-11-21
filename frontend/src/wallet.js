@@ -2,6 +2,26 @@ const providers = new Map();
 const sourceKey = 'tavrel-wallet-source';
 let codecPromise;
 
+export function walletRequest(work, { signal, timeoutMs = 45_000, message = 'Your wallet did not respond. Open its extension, unlock it, and check pending requests before trying again.' } = {}) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    let finished = false;
+    const finish = (callback, value) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', cancel);
+      callback(value);
+    };
+    const cancel = () => finish(reject, signal.reason);
+    const timer = setTimeout(() => finish(reject, new Error(message)), timeoutMs);
+    signal?.addEventListener('abort', cancel, { once: true });
+    // Invoke on the user's click, without waiting for codecs or another wallet.
+    try { Promise.resolve(work()).then(value => finish(resolve, value), error => finish(reject, error)); }
+    catch (error) { finish(reject, error); }
+  });
+}
+
 export function warmWallet() {
   if (!codecPromise) codecPromise = Promise.all([
     import('@polkadot/util-crypto/address/decode'), import('@polkadot/util/u8a/toHex'),
@@ -20,27 +40,50 @@ export function rememberWallet(source) {
   try { source ? sessionStorage.setItem(sourceKey, source) : sessionStorage.removeItem(sourceKey); } catch { /* Storage may be disabled. */ }
 }
 
-export async function walletProvider(source) {
+export function forgetWallet(source) { providers.delete(source); }
+
+export async function walletProvider(source, options = {}) {
+  options.signal?.throwIfAborted();
   if (!providers.has(source)) {
     const injected = window.injectedWeb3?.[source];
     if (!injected) throw new Error('This wallet is unavailable. Unlock it and connect again.');
-    const pending = Promise.resolve().then(() => injected.connect ? injected.connect('Tavrel') : injected.enable('Tavrel'));
+    const pending = walletRequest(() => {
+      // SubWallet's native interface uses enable with Substrate account access.
+      // Other wallets may expose the newer connect interface (and a rejecting enable shim).
+      if (/subwallet/i.test(source) && typeof injected.enable === 'function') {
+        return injected.enable('Tavrel', { accountAuthType: 'substrate' });
+      }
+      return typeof injected.connect === 'function' ? injected.connect('Tavrel') : injected.enable('Tavrel');
+    }, options).then(provider => {
+      if (typeof provider?.accounts?.get !== 'function') throw new Error('The wallet did not provide native account access. Unlock it and reconnect.');
+      return provider;
+    });
     providers.set(source, pending);
     pending.catch(() => { if (providers.get(source) === pending) providers.delete(source); });
   }
-  return providers.get(source);
+  const pending = providers.get(source);
+  try { return await walletRequest(() => pending, options); }
+  catch (error) { if (providers.get(source) === pending) providers.delete(source); throw error; }
 }
 
-export async function walletAccounts(source) {
-  const [provider, { decodeAddress }] = await Promise.all([walletProvider(source), warmWallet()]);
-  const accounts = await provider.accounts.get();
-  return accounts.flatMap(account => {
-    try {
-      // Ethereum accounts do not represent native zkVerify AccountId32 wallets.
-      if (account.type === 'ethereum' || decodeAddress(account.address).length !== 32) return [];
-      return [{ ...account, meta: { name: account.name, source } }];
-    } catch { return []; }
-  });
+export async function walletAccounts(source, options = {}) {
+  const pending = walletProvider(source, options);
+  const cached = providers.get(source);
+  try {
+    const [provider, { decodeAddress }] = await Promise.all([pending, walletRequest(warmWallet, options)]);
+    const accounts = await walletRequest(() => provider.accounts.get(), options);
+    if (!Array.isArray(accounts)) throw new Error('The wallet could not list its accounts. Unlock it and reconnect.');
+    return accounts.flatMap(account => {
+      try {
+        // Ethereum accounts do not represent native zkVerify AccountId32 wallets.
+        if (account.type === 'ethereum' || decodeAddress(account.address).length !== 32) return [];
+        return [{ ...account, meta: { name: account.name, source } }];
+      } catch { return []; }
+    });
+  } catch (error) {
+    if (providers.get(source) === cached) providers.delete(source);
+    throw error;
+  }
 }
 
 export async function signPayment(payload, expectedSender) {

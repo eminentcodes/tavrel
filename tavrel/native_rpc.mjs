@@ -31,7 +31,18 @@ try {
   const height = (await api.rpc.chain.getHeader(head)).number.toNumber();
   diagnostic('Finalized head checked');
   let result;
-  if (args.action === 'quote') {
+  if (args.action === 'balance') {
+    const at = await api.at(head);
+    const state = await at.query.system.account(args.address);
+    const free = BigInt(state.data.free.toString());
+    const frozen = BigInt((state.data.frozen ?? state.data.miscFrozen ?? 0).toString());
+    const minimum = BigInt(api.consts.balances.existentialDeposit.toString());
+    const protectedAmount = frozen > minimum ? frozen : minimum;
+    result = { address: account(args.address), free_units: String(free), frozen_units: String(frozen),
+      transferable_units: String(free > protectedAmount ? free - protectedAmount : 0n),
+      genesis_hash: api.genesisHash.toHex(), finalized_height: height, finalized_block: head.toHex(), symbol, decimals: Number(decimals),
+      checked_at: new Date().toISOString() };
+  } else if (args.action === 'quote') {
     const tx = api.tx.balances.transferKeepAlive(args.payment.recipient, args.payment.amount_units);
     const [info, state, nonce] = await Promise.all([tx.paymentInfo(args.payment.sender),
       api.query.system.account(args.payment.sender), api.rpc.system.accountNextIndex(args.payment.sender)]);

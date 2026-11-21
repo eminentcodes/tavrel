@@ -2,7 +2,7 @@
 <h1 align="center">Tavrel</h1>
 <p align="center">Agentic payments. On your terms.</p>
 
-**Tavrel is an agent payment app.** Give an agent a spending allowance and approved recipients. It prepares payments, Tavrel checks your rules, and you sign eligible transfers in your wallet. Tavrel sends them on **zkVerify Volta** and follows them through finalized confirmation.
+**Tavrel is an agent payment app.** Give your agent exact invoice details. It checks recipients and spending limits, prepares each payment, and follows its outcome. Sign transfers in your wallet, or authorize a separate agent wallet to sign eligible payments automatically. Tavrel sends them on **zkVerify Volta** and checks finalized confirmation.
 
 The app brings agents, recipients, approvals, and payment receipts into one place. You can browse before connecting a wallet; account operations ask you to sign in. Normal startup uses real APIs and starts with empty account data.
 
@@ -14,6 +14,8 @@ The app brings agents, recipients, approvals, and payment receipts into one plac
 - [Judge Guide](#judge-guide)
 - [Getting started](#getting-started)
 - [Connecting an agent](#connecting-an-agent)
+- [Invoice tasks](#invoice-tasks)
+- [Automatic agent-wallet payments](#automatic-agent-wallet-payments)
 - [zkVerify and test tokens](#zkverify-and-test-tokens)
 - [Optional policy proof](#optional-policy-proof)
 - [Architecture](#architecture)
@@ -37,6 +39,8 @@ These examples use the sponsor's native test token. They demonstrate payment con
 | --- | --- |
 | Agents | A sender wallet, allowance, cap, approval threshold, approved recipients, pause/resume, and restricted API connection. |
 | Invoice task runner | Submit real invoice instructions, report decisions, link requests for review, and watch payment status. |
+| Invoice tasks | Process 1–20 exact invoices with durable activity, recipient/allowance decisions, cancellation, and safe resume. |
+| Agent wallet | Generate a separate encrypted signing key; authorize a policy version and expiry for automatic eligible transfers. |
 | Rules engine | Exact 18-decimal amounts, atomic account/agent reservations, recipient checks, policy version checks, and stable retry keys. |
 | Approvals | Review the exact payment. Approval cannot bypass a budget or recipient rule. |
 | Wallet access | Server-verified Substrate signed-message login and revocable sessions. |
@@ -51,10 +55,10 @@ These examples use the sponsor's native test token. They demonstrate payment con
 ## How it works
 
 1. Set the shared account allowance and the agent's sender, recipients, cap, and review threshold.
-2. The agent submits an invoice with its recipient, decimal amount, purpose, and stable request key.
+2. Name a payment task and enter each invoice's reference, recipient, exact amount, and purpose. The agent validates the entire input before preparing any request.
 3. Tavrel checks the rules. An eligible request reserves its principal; a prohibited request is recorded as blocked.
 4. Approve qualifying requests after reviewing their exact details. Rules are checked again if they change.
-5. Review the real network fee and balance. The wallet signs the exact native transfer payload.
+5. The app checks the real network fee and balance. Your wallet signs the native transfer, or a separately authorized agent wallet signs an eligible request automatically.
 6. Tavrel verifies the signature and saves the signed transaction before submitting it. Recovery reuses those signed bytes.
 7. A matching successful transfer in a finalized block moves principal from reserved to spent. The request receives a downloadable receipt.
 
@@ -102,24 +106,14 @@ Claim tVFY for the intended **sender** using the [Volta faucet](https://www.fauc
 
 ### 3. See the agent in action
 
-Open the agent and choose **Agent connection → Create and download**. Keep the connection JSON private; creating it revokes the previous task token.
+Open **Invoice assistant**. Under **Give your agent a task**, name the task **Service invoices** and fill in the first invoice. Choose **Add invoice** for the second:
 
-Create your own `invoices.json`:
+| Reference | Recipient | Amount (tVFY) | Purpose |
+| --- | --- | --- | --- |
+| `INV-001` | `service_vendor` | `0.005` | First service invoice |
+| `INV-002` | `service_vendor` | `0.02` | Compute invoice requiring review |
 
-```json
-[
-  {"recipient":"service_vendor","amount":"0.005","purpose":"First service invoice"},
-  {"recipient":"service_vendor","amount":"0.02","purpose":"Compute invoice requiring review"}
-]
-```
-
-Use the agent ID and connection filename shown by the app:
-
-```bash
-python -m tavrel.agent TASK_ID --connection TASK_ID-connection.json --file invoices.json --key judge-invoices --watch 600
-```
-
-The runner submits the invoices, reports their decisions, and prints links to the payment requests. It watches status changes while you review and sign. It has no approval or signing permission.
+Choose **Start task**. The agent checks the payment rules, reads the invoices, and prepares each request. The activity and links come from the actual ledger. A missing or invalid field is rejected before any invoice is prepared. No model setup or API key is required.
 
 Expected result: the first invoice is **Ready to send**; the second **Needs approval**. This reserves `0.025` tVFY in principal across the two invoices.
 
@@ -136,7 +130,7 @@ Open **View transaction** and compare the sender, recipient, amount, and finaliz
 - Open the second invoice through **Approvals**, review it, and approve or deny it. Approval makes it eligible for wallet signing; denial releases its hold.
 - Try a payment of `0.031` to `service_vendor`: it must be blocked by the cap.
 - Try a payment to a checksum-valid address absent from the recipient list: it must be blocked before signing.
-- Repeat the agent command with the same file and `--key judge-invoices`: it returns the existing payment IDs and does not send a second transaction.
+- Submit another task with the same invoice references and details: it returns the existing payment IDs and does not prepare duplicate payments.
 - Change an amount under the same key: Tavrel rejects the conflict.
 - Change rules before signing an older request: its previous review cannot authorize a changed policy version.
 
@@ -161,13 +155,57 @@ python -m tavrel serve
 
 Open the printed address, normally `http://127.0.0.1:8787`. The build produces the frontend and bundled Node helpers. Runtime data lives in `.tavrel/`, which is excluded from Git. Use a different `--data-dir` for a separate installation.
 
-First-wallet registration requires a same-origin browser request to the loopback app and a valid wallet signature. It cannot replace an existing account owner. The app requests access only from the selected extension. Sessions expire after 30 minutes, survive page reloads, and are revoked by Disconnect. Neither the app nor the agent receives a private key.
+First-wallet registration requires a same-origin browser request to the loopback app and a valid wallet signature. It cannot replace an existing account owner. The app requests access only from the selected extension. Sessions expire after 30 minutes, survive page reloads, and are revoked by Disconnect. Your connected wallet's private key stays in its extension.
+
+If a wallet popup does not open, click the extension in your browser toolbar, unlock it, and check pending requests. SubWallet access requests use its native Substrate interface. Access and account-list requests time out after 45 seconds; the login-signature request times out after 90 seconds. **Cancel connection** or closing the modal stops the app from using late extension replies. Close any old pending wallet request before reconnecting; Tavrel does not automatically repeat signing or sign-in verification.
 
 The server currently binds to loopback. A public HTTPS service and competition transport are separate deployment work, not a feature silently enabled by this command.
 
 ## Connecting an agent
 
-Use the downloaded agent connection with the runner above, or call the HTTP API from an existing AI agent. The runner is a deterministic invoice task executor; it does not invoke or imitate a language model.
+Choose **Agent connection → Create and download**. Keep the connection JSON private; creating it revokes the previous task token. Your own automation can use the task-scoped API, or run the included deterministic CLI with a JSON array containing `recipient`, `amount`, and `purpose`:
+
+```bash
+python -m tavrel.agent TASK_ID --connection TASK_ID-connection.json --file invoices.json --key invoice-batch --watch 600
+```
+
+The CLI reports each decision and follows payment status while you review requests. Reuse its task key and exact ordered file when retrying. UI invoice references and CLI batch keys identify their own requests; choose one submission route for an invoice rather than submitting it through both.
+
+## Invoice tasks
+
+The app agent validates 1–20 invoices, resolves approved recipient names to public accounts, checks the current rules, and prepares requests in order. Required details are explicit fields; it does not interpret natural-language instructions or invent missing information. Its durable activity records rule checks, invoice counts, each payment outcome, and completion.
+
+Task-token clients can `POST /v1/agent/runs` with `goal` (a task name), `invoices`, and a stable `request_key`:
+
+```json
+{
+  "goal": "Service invoices",
+  "request_key": "service-invoices-november",
+  "invoices": [
+    {"invoice_reference":"INV-001","recipient":"service_vendor","amount":"0.005","purpose":"First service invoice"}
+  ]
+}
+```
+
+List/get scoped runs and use `/resume` or `/cancel`. The same reference within an agent identifies the same payment across app batches; changed details conflict rather than replacing that payment. Different references can identify separate invoices with equal amounts. A restarted or interrupted task requires explicit resume and reuses saved requests. Cancellation stops future invoice preparation; existing payments, holds, and automatic-wallet permissions still apply.
+
+A blocked request remains history. After correcting rules, use a clearly revised reference such as `INV-001-retry2` to request a fresh review. Earlier model-task records remain under **Earlier tasks** and cannot execute again. The current app makes no model calls and has no model-provider configuration.
+
+## Automatic agent-wallet payments
+
+To pay without signing each transfer:
+
+1. Open the agent and choose **Create agent wallet**.
+2. Fund its displayed public address with tVFY using the faucet or a transfer you authorize.
+3. Set that address as the sender in the agent's policy. Set recipients, principal allowance, cap, and approval threshold.
+4. Review the estimated fee cap and permission duration, tick the authorization box, then choose **Enable automatic signing**.
+5. Start an invoice task. Eligible payments are signed and submitted automatically; requests above the threshold still require your approval in the app.
+
+Permission is bound to the reviewed policy version, expires after 1–168 hours, and can be disabled. A policy change or pause stops new automatic signing. Disabling does not cancel previously stored signed transactions or release payment holds; existing transaction recovery continues.
+
+The app holds the **separate agent wallet's encrypted key**. Your connected wallet's private key remains in its extension. Limits are enforced by Tavrel's server, rather than ARCANUM-style smart contracts, so keep only the funds you intend to delegate in the agent wallet. Fees are paid separately; the fee cap checks the current estimate and cannot guarantee the final fee charged by the chain.
+
+Windows uses profile-bound DPAPI to protect the encryption key. On other systems set `TAVREL_WALLET_VAULT_KEY` to a Fernet key in the server environment before creating wallets. Preserve the encrypted ledger and original vault key/profile; losing them loses access to agent-wallet funds. Never commit or pass the vault key to an agent.
 
 | Method | Task-scoped endpoint | Purpose |
 | --- | --- | --- |
@@ -175,6 +213,9 @@ Use the downloaded agent connection with the runner above, or call the HTTP API 
 | POST | `/v1/agent/payments/prepare` | Prepare one invoice using recipient, amount, purpose, and request key. |
 | POST | `/v1/agent/payments/task` | Submit an ordered task with a stable task key and 1–20 invoices. |
 | GET | `/v1/agent/payments/PAYMENT_ID` | Follow the request and its eventual receipt. |
+| POST / GET | `/v1/agent/runs` | Start or list exact invoice tasks. |
+| GET | `/v1/agent/runs/RUN_ID` | Read durable activity and payment outcomes. |
+| POST | `/v1/agent/runs/RUN_ID/resume` or `/cancel` | Resume an interrupted task or stop future invoice preparation. |
 
 Authenticate using the connection file's task token in `Authorization: Bearer TOKEN`. The token is restricted to its own agent. Keep connection files outside version control; do not give an agent access to the server's data directory.
 
@@ -236,11 +277,13 @@ The bundle's SHA-256 reference identifies the actual artifact. `zkverify_transac
 | [native_rpc.mjs](tavrel/native_rpc.mjs) | Live metadata/balance/fee reads, signature inspection, native submission, finalized block/event scanning. |
 | [auth.py](tavrel/auth.py) | Registered wallet ownership, expiring login challenges, replay prevention, and revocable sessions. |
 | [agent.py](tavrel/agent.py) | Invoice task execution and status watching through restricted agent APIs. |
+| [agent_runs.py](tavrel/agent_runs.py) | Deterministic invoice validation, durable action plans, scoped runs, and retry identities. |
+| [agent_wallets.py](tavrel/agent_wallets.py) | Separate encrypted wallets and explicit bounded automatic-signing permissions. |
 | [server.py](tavrel/server.py) | App/API routes, authentication, origin checks, and reconciliation lifecycle. |
 | [proofs](proofs) | Optional payment-policy circuit and witness/commitment construction. |
 | [tests](tests) | Behavioral and cryptographic verification with isolated fixtures. |
 
-Python and SQLite provide the authorization boundary. Amounts are decimal text in SQLite and Python integers during atomic transactions, so 18-decimal values do not overflow SQLite's signed integer range. The browser wallet owns signing. Node helpers use current chain metadata and cryptographic primitives.
+Python and SQLite provide the authorization boundary. Amounts are decimal text in SQLite and Python integers during atomic transactions, so 18-decimal values do not overflow SQLite's signed integer range. The invoice agent executes a bounded saved action plan. Signing belongs either to the browser wallet or the separately authorized encrypted agent wallet. Node helpers use current chain metadata and cryptographic primitives.
 
 The app routes are `/dashboard`, `/agents`, agent details/policies, `/vendors`, `/approvals`, `/ledger`, payment details, and `/settings`. `/docs` is public and linked from the landing navigation/footer.
 
@@ -250,7 +293,7 @@ Run:
 
 ```bash
 python -W error::ResourceWarning -m unittest discover -s tests
-node --test tests/native-signing.test.mjs tests/wallet-connection.test.mjs
+node --test tests/native-signing.test.mjs tests/wallet-connection.test.mjs tests/wallet-login.test.mjs tests/agent-wallet.test.mjs tests/api.test.mjs
 npm run check:ui
 node scripts/check-native-rpc.mjs
 npm audit
@@ -268,7 +311,10 @@ After proof setup, run `node --test tests/policy-proof.test.mjs` to check the ac
 | [Browser record](artifacts/ui/frontend-proof.json) | App browsing, wallet message authentication, policy/approval flow, images, and responsive layout; the file labels its test provider and network coverage. |
 | [Settlement tests](tests/test_settlement.py) | Controlled RPC responses verify authorization, reservations, recovery, and receipt accounting. |
 | [Cryptographic tests](tests/native-signing.test.mjs) | Offline signatures verify against stored public chain payloads. |
-| [Wallet connection tests](tests/wallet-connection.test.mjs) | Only the selected extension receives an access request; unsupported accounts are filtered and payment payloads remain unchanged. |
+| [Wallet connection tests](tests/wallet-connection.test.mjs) | Selected native access, bounded waiting, retry after timeout/cancellation, unsupported account filtering, and exact payment payloads. |
+| [Wallet login tests](tests/wallet-login.test.mjs) | Cancelled or timed-out signatures never reach verification; successful login signs the exact challenge once. |
+| [Invoice task tests](tests/test_agent_runs.py) | Input validation, exact ledger outcomes, scoped access, duplicate references, crash recovery, cancellation, recipient binding, and retained historical runs. |
+| [Agent-wallet tests](tests/test_agent_wallets.py) | Encrypted keys, version/expiry/sender permissions, required approval, funding/fee checks, and revocation before durable transaction storage. |
 | [Policy proof checks](artifacts/policy-proof-check.json) | Twelve actual FFLONK generation/verification cases, including altered claims and allowance overflows. |
 | [Actual policy artifact](artifacts/payment-policy-proof.json) | A real locally verified proof from isolated test instructions; no on-chain proof or payment transaction. |
 
@@ -278,10 +324,10 @@ Tests do not spend funds. A funded installed-wallet transfer must be confirmed b
 
 - Transfers use a user's Substrate wallet and native Volta tVFY. Stablecoins, contract wallets, swaps, and commercial x402 service purchasing are not implemented.
 - Rules cover Tavrel's API. They do not constrain a wallet owner who sends directly elsewhere. Agents must be isolated from server credentials and files.
-- Every payment needs a wallet signature. Tavrel holds no private key and does not perform unattended signing.
+- Manual payments use the browser wallet. Optional automatic payments use a separate encrypted agent wallet after explicit permission.
 - A saved signature stays bound to its reviewed call, nonce, network, and mortal era. Uncertain outcomes retain reservations until finalized success, failure, or verified expiry.
 - Confirmed principal reduces the remaining allowance; fees are tracked separately when emitted by the chain.
-- The included agent runner uses actual invoice instructions and deterministic rules. Connecting a language model is optional; no model execution is fabricated.
+- App invoice tasks and the deterministic CLI use the same payment ledger. Explicit invoice details drive execution; natural-language reasoning, external invoice fetching, and LLM calls are not included.
 - Public hosting, competition authentication/transport, hackathon submission, and observed funded-wallet settlement are separate from the local implementation and automated test results.
 
 ## Project context and references

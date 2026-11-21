@@ -3,7 +3,7 @@ import { ArrowRight, ArrowUpRight, Plus, Robot, Pause, Play, ArrowLeft, Download
 import { request, amount, download } from '../api.js';
 import { Link, Button, Status, Empty, Field, Modal, PageHead, PaymentTable, Address, GlassForms } from '../components.jsx';
 
-export function Overview({ data, pending, setModal, connected }) {
+export function Overview({ data, pending, setModal, connected, walletAccount }) {
   const ready = data.intents.filter(item => item.status === 'ready_for_signature').length;
   return <><PageHead title="A clear view." action={<Button onClick={() => setModal({ type: 'agent' })}><Plus size={17} />New agent</Button>}>Your agents’ payments, with you in control.</PageHead>
     <section className="allowance-overview"><div><span>Available allowance</span><div className="big-amount">{connected ? amount(data.account.available_units) : '—'}<span>tVFY</span></div><p>{connected ? `Of ${amount(data.account.limit_units)} tVFY assigned to this account.` : 'Connect when you are ready to manage payments.'}</p></div><GlassForms small />

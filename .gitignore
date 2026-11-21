@@ -30,6 +30,7 @@ artifacts/*.mp4
 AGENTS.md
 agent.md
 projectplan*.md
+submission.md
 research/
 tavrel/web/
 tavrel/*.bundle.mjs

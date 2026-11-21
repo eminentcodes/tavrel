@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowRight, ArrowUpRight, ArrowLeft, DownloadSimple, ArrowClockwise } from '@phosphor-icons/react';
-import { request, amount, download } from '../api.js';
+import { request, amount, download, paymentReason } from '../api.js';
 import { signPayment } from '../wallet.js';
 import { Link, Button, Status, Empty, PageHead, Address } from '../components.jsx';
 
@@ -31,7 +31,7 @@ export function PaymentDetail({ paymentId, data, busy, mutate, connected, author
   const ready = ['ready_for_signature', 'exported'].includes(payment.status);
   async function decide(decision) {
     await mutate(() => request(`/v1/operator/payments/${payment.id}/decision`, 'POST', { expected_hash: payment.approval_hash, decision }),
-      result => result.status === 'blocked' ? `Request blocked: ${result.reason}.` : result.reason === 'POLICY_CHANGED_REVIEW_AGAIN' ? 'Rules changed. Review the updated payment.' : decision === 'deny' ? 'Payment denied. Its allowance has been released.' : 'Payment approved. Review fees to send it.');
+      result => result.status === 'blocked' ? paymentReason(result.reason) : result.reason === 'POLICY_CHANGED_REVIEW_AGAIN' ? 'Rules changed. Review the updated payment.' : decision === 'deny' ? 'Payment denied. Its allowance has been released.' : 'Payment approved. Review fees to send it.');
   }
   async function reviewFees() {
     const result = await mutate(() => request(`/v1/operator/payments/${payment.id}/quote`, 'POST', { expected_hash: payment.approval_hash }), 'Current wallet balance and estimated network fee checked.');
@@ -45,8 +45,8 @@ export function PaymentDetail({ paymentId, data, busy, mutate, connected, author
   }
   return <><Link href="/ledger" className="back-link"><ArrowLeft size={17} />Payment ledger</Link><PageHead title={payment.purpose}>{task?.name} · {payment.id}</PageHead>
   <section className="payment-detail"><div className="payment-detail-top"><div><span>Payment amount</span><strong>{payment.amount} <small>tVFY</small></strong></div><Status value={payment.status} /></div>
-    <dl className="intent-fields"><div><dt>Network</dt><dd>zkVerify Volta · Testnet</dd></div><div><dt>Sender</dt><dd><Address value={payment.sender} /></dd></div><div><dt>Recipient</dt><dd><Address value={payment.recipient} /></dd></div><div><dt>Payment rules</dt><dd>Version {payment.policy_version}</dd></div><div><dt>Request key</dt><dd>{payment.request_key}</dd></div><div><dt>Review fingerprint</dt><dd><code className="break">{payment.approval_hash}</code></dd></div></dl>
-    {payment.reason && <div className="reason-note">{payment.reason}</div>}
+    <dl className="intent-fields"><div><dt>Network</dt><dd>zkVerify Volta · Testnet</dd></div><div><dt>Sender</dt><dd><Address value={payment.sender_address || payment.sender} /></dd></div><div><dt>Recipient</dt><dd><Address value={payment.recipient_address || payment.recipient} /></dd></div><div><dt>Payment rules</dt><dd>Version {payment.policy_version}</dd></div><div><dt>Request key</dt><dd>{payment.request_key}</dd></div><div><dt>Review fingerprint</dt><dd><code className="break">{payment.approval_hash}</code></dd></div></dl>
+    {payment.reason && <div className="reason-note"><p>{paymentReason(payment.reason)}</p>{payment.status === 'blocked' && <Link className="text-link" href={payment.reason === 'WORKSPACE_PAYMENT_BUDGET' ? '/settings' : `/agents/${payment.task_id}/policy`}>{payment.reason === 'WORKSPACE_PAYMENT_BUDGET' ? 'Set account allowance' : 'View agent policy'} <ArrowUpRight size={16} /></Link>}</div>}
     {error && <div className="feedback error" role="alert">{error}</div>}
     {(payment.status === 'pending_approval' || ready) && <div className="decision-area">
       <label className="checkbox"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />I have reviewed the amount, recipient, network, and payment rules.</label>

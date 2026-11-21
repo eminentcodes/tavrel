@@ -96,7 +96,7 @@ class Settlement:
             self._save_policy_snapshot(db, payment_id, expected_hash, snapshot)
         return {key: value for key, value in {**quote, 'quote_id': quote_id}.items() if key != 'policy_snapshot'}
 
-    def submit(self, payment_id, expected_hash, quote_id, signature, signed_hex=None):
+    def submit(self, payment_id, expected_hash, quote_id, signature, signed_hex=None, signer_permission=None):
         if not isinstance(signature, str) or re.fullmatch(r'0x[0-9a-fA-F]{128,132}', signature) is None:
             raise PolicyError('invalid_transaction', 'Provide the exact wallet signature.')
         if signed_hex is not None and (not isinstance(signed_hex, str) or re.fullmatch(r'0x(?:[0-9a-fA-F]{2}){50,16000}', signed_hex) is None):
@@ -117,6 +117,14 @@ class Settlement:
             self.authorize(payment_id, expected_hash)
             with self.engine.transaction() as db:
                 current = self.payments._intent(payment_id, db)
+                if signer_permission is not None:
+                    permission = db.execute('SELECT * FROM agent_wallets WHERE task_id=?', (current['task_id'],)).fetchone()
+                    if (not permission or signer_permission.get('task_id') != current['task_id']
+                            or not permission['enabled'] or permission['expires_at'] <= now()
+                            or permission['address'] != current['sender']
+                            or permission['policy_version'] != signer_permission.get('policy_version')
+                            or permission['policy_version'] != current['policy_version']):
+                        raise PolicyError('agent_wallet_not_authorized', 'Automatic signing permission changed before transaction storage.', 409)
                 self.payments._confirm(current, expected_hash)
                 if current['status'] not in ('ready_for_signature', 'exported'):
                     raise PolicyError('payment_not_authorized', 'This request is no longer eligible to send.', 409)

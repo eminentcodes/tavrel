@@ -10,6 +10,7 @@ import { Recipients } from './pages/Recipients.jsx';
 import { Ledger } from './pages/Ledger.jsx';
 import { PaymentDetail } from './pages/PaymentDetail.jsx';
 import { Settings } from './pages/Settings.jsx';
+import { WalletBalance } from './pages/WalletBalance.jsx';
 import { NewAgent } from './pages/NewAgent.jsx';
 import { Prepare } from './pages/Prepare.jsx';
 import { Docs } from './pages/Docs.jsx';
@@ -30,6 +31,7 @@ export function App() {
   const [path, setPath] = useState(window.location.pathname);
   const [session, setSession] = useState(null);
   const [data, setData] = useState(initialData);
+  const [walletBalance, setWalletBalance] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -40,19 +42,22 @@ export function App() {
     window.addEventListener('popstate', onRoute);
     return () => window.removeEventListener('popstate', onRoute);
   }, []);
-  const refresh = useCallback(async () => {
-    const [payments, app] = await Promise.all([request('/v1/operator/payments/status'), request('/v1/operator/status')]);
+  const refresh = useCallback(async (signal) => {
+    const [payments, app] = await Promise.all([request('/v1/operator/payments/status', 'GET', undefined, { signal }), request('/v1/operator/status', 'GET', undefined, { signal })]);
+    signal?.throwIfAborted();
     setData({ ...payments, tasks: app.tasks, events: app.events });
   }, []);
-  const enter = async (account) => {
-    await refresh();
+  const enter = async (account, address, signal) => {
+    setWalletBalance(null);
+    await refresh(signal);
+    signal?.throwIfAborted();
     loadedRoute.current = `${account}:${window.location.pathname}`;
-    setSession({ account }); setError('');
+    setSession({ account, address: address || account }); setError('');
   };
   useEffect(() => {
     let active = true;
     request('/v1/auth/status').then(async result => {
-      if (active && result.authenticated) await enter(result.account);
+      if (active && result.authenticated) await enter(result.account, result.address);
     }).catch(() => {});
     return () => { active = false; };
   }, []);
@@ -81,7 +86,7 @@ export function App() {
   const segments = path.split('/').filter(Boolean);
   const task = data.tasks.find(item => item.id === segments[1]);
   const policy = data.policies.find(item => item.task_id === segments[1]);
-  const props = { data, busy, mutate, setModal: actionModal, connected: !!session, walletAccount: session?.account, authorize, refresh };
+  const props = { data, busy, mutate, setModal: actionModal, connected: !!session, walletAccount: session?.account, walletAddress: session?.address, walletBalance: walletBalance?.address === session?.account ? walletBalance : null, authorize, refresh };
   let page;
   if (path === '/dashboard' || path === '/connect') page = <Overview {...props} pending={pending} />;
   else if (path === '/agents') page = <Agents {...props} />;
@@ -93,17 +98,17 @@ export function App() {
   else if (segments[0] === 'payments') page = <PaymentDetail {...props} paymentId={segments[1]} />;
   else if (path === '/settings') page = <Settings {...props} />;
   else page = <Empty title="Page not found" action={<Link href="/dashboard" className="button">Go to overview</Link>}>This route is not available in this account.</Empty>;
-  return <div className="app"><aside className="sidebar"><Brand /><div className="app-label"><span className="app-avatar">T</span><div>Agent control{session && <small>{`${session.account.slice(0, 6)}…${session.account.slice(-4)}`}</small>}</div></div>
+  return <div className="app"><aside className="sidebar"><Brand /><div className="app-label"><span className="app-avatar">T</span><div>Agent control{session && <small title={session.address}>{`${session.address.slice(0, 7)}…${session.address.slice(-6)}`}</small>}</div></div>
     <nav aria-label="App navigation">{navigation.map(([label, href, Icon]) => <Link key={href} href={href} className={path.startsWith(href) ? 'active' : ''}><Icon size={20} weight={path.startsWith(href) ? 'fill' : 'regular'} />{label}{href === '/approvals' && pending.length > 0 && <span className="nav-count">{pending.length}</span>}</Link>)}</nav>
     <div className="sidebar-bottom"><div className="network-tag"><span />zkVerify Volta<small>Testnet · tVFY</small></div>{session && <button onClick={leave}><SignOut size={19} />Disconnect</button>}</div>
-  </aside><div className="app-main"><header className="app-top"><div>{session ? <><span className="mode-label">Wallet connected</span><button className="icon-button" aria-label="Refresh app" disabled={busy} onClick={() => mutate(() => refresh(), 'Dashboard refreshed.')}><ArrowClockwise size={18} /></button><span className="operator-avatar">OP</span></> : <Button secondary onClick={() => setModal({ type: 'wallet' })}>Connect wallet</Button>}</div></header>
+  </aside><div className="app-main"><header className="app-top"><div>{session ? <><WalletBalance connected walletAccount={session.account} onBalance={setWalletBalance} /><button className="icon-button" aria-label="Refresh app" disabled={busy} onClick={() => mutate(() => refresh(), 'Dashboard refreshed.')}><ArrowClockwise size={18} /></button></> : <Button secondary onClick={() => setModal({ type: 'wallet' })}>Connect wallet</Button>}</div></header>
     <main className="app-content">
     {error && <div className="feedback error" role="alert">{error}</div>}{notice && <div className="feedback success" role="status">{notice}</div>}{page}</main>
   </div>{modal?.type === 'agent' && <NewAgent {...props} close={() => setModal(null)} />}
   {modal?.type === 'prepare' && <Prepare {...props} task={modal.task} policy={modal.policy} close={() => setModal(null)} />}
-  {modal?.type === 'wallet' && <Modal title="Sign in with your wallet." className="wallet-modal" close={() => setModal(null)}><Connection embedded busy={busy} error={error} onSignedIn={async account => {
-    setBusy(true); try { await enter(account); setModal(null); }
-    catch (failure) { setError(failure.message); } finally { setBusy(false); }
+  {modal?.type === 'wallet' && <Modal title="Sign in with your wallet." className="wallet-modal" close={() => setModal(null)}><Connection embedded busy={busy} error={error} onSignedIn={async (account, signal) => {
+    setBusy(true); try { const status = await request('/v1/auth/status', 'GET', undefined, { signal }); await enter(account, status.address, signal); setModal(null); }
+    finally { setBusy(false); }
   }} /></Modal>}
   </div>;
 }

@@ -16,6 +16,7 @@ let startupError = '';
 gateway.stdout.on('data', bytes => { output += bytes.toString(); });
 gateway.stderr.on('data', bytes => { startupError += bytes.toString(); });
 let browser;
+async function verify() {
 try {
   for (let attempt = 0; attempt < 450 && gateway.exitCode === null && !output.includes('Native Volta payments enabled.'); attempt++) await new Promise(resolve => setTimeout(resolve, 100));
   if (!output.includes('Native Volta payments enabled.')) throw new Error('The clean gateway did not become ready: ' + startupError + output);
@@ -26,15 +27,28 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   const errors = []; const badResponses = [];
   let policyProofReference = null;
+  let invoiceRun = null;
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => { if (response.status() >= 400 && !response.url().includes('/v1/auth/')) badResponses.push({ status: response.status(), path: new URL(response.url()).pathname }); });
   await page.exposeFunction('tavrelFixtureSign', data => ({ signature: u8aToHex(sr25519Sign(u8aWrapBytes(hexToU8a(data)), pair)) }));
   await page.addInitScript(({ address }) => {
     window.unselectedWalletRequests = 0;
-    window.injectedWeb3 = { tavrelVerification: { version: '1', enable: async () => ({
+    window.wrongWalletMethodRequests = 0;
+    window.walletVerificationMode = 'normal';
+    const provider = () => ({
       accounts: { get: async () => [{ address, name: 'Verification wallet', type: 'sr25519' }] },
-      signer: { signRaw: ({ data }) => window.tavrelFixtureSign(data) },
-    }) }, unselectedWallet: { enable: () => { window.unselectedWalletRequests++; return new Promise(() => {}); } } };
+      signer: { signRaw: ({ data }) => window.walletVerificationMode === 'signature-pending'
+        ? new Promise(resolve => { window.finishLateSignature = () => window.tavrelFixtureSign(data).then(resolve); })
+        : window.tavrelFixtureSign(data) },
+    });
+    window.injectedWeb3 = { 'subwallet-verification': { version: '1',
+      enable: async (name, options) => {
+        if (name !== 'Tavrel' || options?.accountAuthType !== 'substrate') throw new Error('SubWallet native account access was not requested.');
+        return window.walletVerificationMode === 'permission-pending'
+          ? new Promise(resolve => { window.finishLateAccess = () => resolve(provider()); }) : provider();
+      },
+      connect: () => { window.wrongWalletMethodRequests++; return new Promise(() => {}); },
+    }, unselectedWallet: { enable: () => { window.unselectedWalletRequests++; return new Promise(() => {}); } } };
   }, { address });
   await page.goto(`${origin}/dashboard`);
   await page.getByRole('heading', { name: 'A clear view.' }).waitFor();
@@ -54,13 +68,50 @@ try {
   }
   await page.getByRole('button', { name: 'Save allowance', exact: true }).click();
   await page.getByRole('dialog', { name: 'Sign in with your wallet.' }).waitFor();
+  let verifyRequests = 0;
+  page.on('request', incoming => { if (new URL(incoming.url()).pathname === '/v1/auth/verify') verifyRequests++; });
+  await page.evaluate(() => { window.walletVerificationMode = 'permission-pending'; });
+  await page.getByRole('dialog', { name: 'Sign in with your wallet.' }).getByRole('button', { name: 'Connect wallet', exact: true }).click();
+  await page.getByRole('button', { name: 'SubWallet', exact: true }).click();
+  await page.locator('.wallet-pending').getByText('Open your wallet extension', { exact: false }).waitFor();
+  await page.getByRole('button', { name: 'Cancel connection', exact: true }).click();
+  await page.evaluate(() => { window.finishLateAccess(); window.walletVerificationMode = 'signature-pending'; });
+  await page.getByRole('dialog', { name: 'Sign in with your wallet.' }).getByRole('button', { name: 'Connect wallet', exact: true }).click();
+  await page.getByRole('button', { name: 'SubWallet', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm in your wallet', exact: false }).waitFor();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.evaluate(async () => { await window.finishLateSignature(); window.walletVerificationMode = 'normal'; });
+  if (verifyRequests !== 0) throw new Error('A cancelled wallet request was verified.');
+  const afterCancel = await page.evaluate(async () => (await (await fetch('/v1/auth/status')).json()).result);
+  if (afterCancel.authenticated || afterCancel.configured) throw new Error('Cancelled extension replies registered or signed in a wallet.');
+  await page.getByRole('button', { name: 'Save allowance', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Sign in with your wallet.' }).waitFor();
   const connectionStarted = Date.now();
   await page.getByRole('dialog', { name: 'Sign in with your wallet.' }).getByRole('button', { name: 'Connect wallet', exact: true }).click();
-  await page.getByRole('button', { name: 'tavrelVerification', exact: true }).click();
+  await page.getByRole('button', { name: 'SubWallet', exact: true }).click();
   await page.getByRole('dialog', { name: 'Sign in with your wallet.' }).waitFor({ state: 'hidden' });
   const connectionMilliseconds = Date.now() - connectionStarted;
+  await page.getByRole('button', { name: 'Refresh wallet balance', exact: true }).filter({ hasText: '0 tVFY' }).waitFor({ timeout: 60000 });
+  if ((await page.locator('.wallet-balance-pill').boundingBox()).height > 42) throw new Error('Wallet balance is not a compact pill.');
+  if (!(await page.locator('.app-label small').getAttribute('title')).startsWith('x')) throw new Error('Signed-in wallet is not displayed in Volta SS58 format.');
   process.stdout.write(`First wallet verified without a setup link in ${connectionMilliseconds}ms.\n`);
   if (await page.evaluate(() => window.unselectedWalletRequests) !== 0) throw new Error('An unselected wallet was asked to connect.');
+  if (await page.evaluate(() => window.wrongWalletMethodRequests) !== 0) throw new Error('The generic connect method was called for SubWallet.');
+  if (process.env.TAVREL_WALLET_UI_ONLY === '1') {
+    if (verifyRequests !== 1 || errors.length || badResponses.length) throw new Error('Wallet-only verification failed.');
+    await writeFile('artifacts/ui/wallet-connection-proof.json', JSON.stringify({
+      observed_at: new Date().toISOString(), real_gateway: true, isolated_empty_ledger: true,
+      provider: 'Controlled SubWallet-compatible native interface with actual sr25519 signatures',
+      installed_extension_tested: false, subwallet_native_enable_requested: true,
+      unselected_wallet_requests: 0, cancelled_authorization_ignored: true, cancelled_signature_ignored: true,
+      cancelled_requests_did_not_register_wallet: true, retry_after_cancel: true,
+      successful_verification_requests: verifyRequests, connection_milliseconds: connectionMilliseconds,
+      wallet_balance_pill: true, volta_address_display: true, page_errors: errors,
+      signed_transfer: false, submitted_transfer: false,
+    }, null, 2) + '\n');
+    process.stdout.write('Wallet cancellation, late replies, explicit retry, and real signature login passed.\n');
+    return;
+  }
   if (page.url().includes('setup=')) throw new Error('Wallet registration still depends on a setup link.');
   await page.getByRole('link', { name: 'Overview', exact: true }).click();
   await page.getByRole('heading', { name: 'A clear view.' }).waitFor();
@@ -77,7 +128,7 @@ try {
   await page.getByLabel('What will it do?', { exact: true }).fill('Prepare service invoices with defined payment limits.');
   await page.getByRole('button', { name: 'Create agent', exact: false }).click();
   await page.getByRole('heading', { name: 'The boundaries.' }).waitFor();
-  const expectedSender = u8aToHex(pair.publicKey);
+  const expectedSender = address;
   if (await page.getByLabel('Sender address', { exact: true }).inputValue() !== expectedSender) throw new Error('A new agent does not default to the connected sending wallet.');
   await page.getByLabel('Sender address', { exact: true }).fill('0x' + '34'.repeat(32));
   await page.getByRole('button', { name: 'Use connected wallet', exact: true }).click();
@@ -141,6 +192,25 @@ try {
   if (status.account.reserved_units !== '6000000000000000000' || status.settled_units !== '0') throw new Error('The UI flow changed settlement/hold accounting incorrectly.');
   await page.getByRole('link', { name: 'Overview', exact: true }).click();
   await page.screenshot({ path: 'artifacts/ui/dashboard.png', fullPage: true });
+  await page.goto(`${origin}/agents/${connection.task_id}`);
+  await page.getByRole('heading', { name: 'Give your agent a task' }).waitFor();
+  await page.getByRole('button', { name: 'Create agent wallet', exact: true }).click();
+  await page.getByLabel('Agent wallet address', { exact: true }).waitFor();
+  if (!(await page.getByLabel('Agent wallet address', { exact: true }).inputValue()).startsWith('x')) throw new Error('Generated wallet address is not in Volta format.');
+  if (await page.getByRole('button', { name: 'Enable automatic signing', exact: true }).isEnabled()) throw new Error('An unreviewed or mismatched wallet can enable signing.');
+  {
+    await page.getByLabel('Payment task name', { exact: true }).fill('Browser invoice task');
+    await page.getByLabel('Invoice 1 reference', { exact: true }).fill('UI-001');
+    await page.getByLabel('Invoice 1 recipient', { exact: true }).fill('compute_vendor');
+    await page.getByLabel('Invoice 1 amount (tVFY)', { exact: true }).fill('0.005');
+    await page.getByLabel('Invoice 1 purpose', { exact: true }).fill('Invoice from browser');
+    await page.getByRole('button', { name: 'Start task', exact: true }).click();
+    await page.getByText('Invoices are prepared. Eligible payments use automatic signing when enabled; review the other requests below.', { exact: true }).waitFor({ timeout: 15000 });
+    const response = await page.request.get(`${origin}/v1/operator/tasks/${connection.task_id}/runs`);
+    invoiceRun = (await response.json()).result.runs[0];
+    if (invoiceRun.status !== 'completed' || invoiceRun.payments[0]?.amount !== '0.005' || invoiceRun.payments[0]?.broadcast) throw new Error('Invoice task did not prepare the expected real ledger request.');
+  }
+  await page.screenshot({ path: 'artifacts/ui/agent-tasks.png', fullPage: true });
   await page.goto(origin);
   await page.getByRole('heading', { level: 1 }).waitFor();
   const faucetLink = page.locator('footer').getByRole('link', { name: 'Get test tokens', exact: false });
@@ -152,6 +222,14 @@ try {
   const navWidth = await page.locator('.landing-nav nav').evaluate(nav => nav.getBoundingClientRect().width);
   if (navWidth < 330) throw new Error('The desktop navigation has not been widened: ' + navWidth + 'px.');
   for (const section of await page.locator('.landing section').all()) await section.scrollIntoViewIfNeeded();
+  // Lazy images begin loading after entering the viewport. Wait for decoding
+  // before judging their rendered state, including images above the last section.
+  for (const img of await page.locator('.landing img').all()) {
+    await img.scrollIntoViewIfNeeded();
+    await page.waitForFunction(element => element.complete && element.naturalWidth > 0,
+      await img.elementHandle(), { timeout: 15000 });
+    await img.evaluate(element => element.decode());
+  }
   const images = await page.locator('img').evaluateAll(images => images.map(image => ({ src: new URL(image.src).pathname, loaded: image.complete && image.naturalWidth > 0 })));
   if (images.some(image => !image.loaded)) throw new Error('An image failed to render: ' + JSON.stringify(images));
   if (await page.locator('input[type="range"]').count()) throw new Error('The landing slider is still interactive.');
@@ -175,7 +253,8 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${origin}/docs`);
   await page.getByRole('heading', { name: 'Payments, with clear rules.' }).waitFor();
-  if (await page.locator('main section').count() !== 10) throw new Error('Detailed documentation is missing.');
+  const documentationSections = await page.locator('main section').count();
+  if (documentationSections !== 12) throw new Error('Detailed documentation is missing.');
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)) throw new Error('Mobile documentation overflows.');
   await page.screenshot({ path: 'artifacts/ui/docs-mobile.png', fullPage: true });
   await page.goto(`${origin}/dashboard`);
@@ -201,12 +280,13 @@ try {
     wallet_provider: 'Injected test fixture, native sr25519 signature verified by the server',
     live_browser_wallet_tested: false, native_signature_verified: true, session_survived_reload: true, logout_revoked_session: true,
     first_wallet_connected_without_setup_link: true, unselected_wallet_requests: 0, connection_milliseconds: connectionMilliseconds,
-    policy_saved: true, sender_defaults_to_connected_wallet: true, connected_sender_shortcut: true, payment_prepared: true, exact_review_required: true, approval: true, live_fee_review: true, insufficient_funds_prevents_signing: true,
+    subwallet_native_enable_requested: true, cancelled_authorization_ignored: true, cancelled_signature_ignored: true, cancelled_requests_did_not_register_wallet: true, retry_after_cancel: true,
+    policy_saved: true, sender_defaults_to_connected_wallet: true, connected_sender_shortcut: true, wallet_balance_pill: true, volta_address_display: true, generated_agent_wallet: true, automatic_signing_requires_reviewed_matching_sender: true, deterministic_invoice_run: { id: invoiceRun.id, executor: invoiceRun.executor, actions: invoiceRun.actions.map(action => action.name), status: invoiceRun.status }, llm_calls: false, payment_prepared: true, exact_review_required: true, approval: true, live_fee_review: true, insufficient_funds_prevents_signing: true,
     agent_connection_download_verified: true, policy_proof_reference: policyProofReference, downloaded_policy_proof_verified: !!policyProofReference,
     transfer_signed: false, transfer_submitted: false, held_units: status.account.reserved_units, settled_units: status.settled_units,
     landing_images: images, footer_test_token_link: 'https://www.faucy.com/zkverify-volta', static_policy_slider: true, top_launch_link_removed: true, desktop_nav_width: navWidth,
     browse_without_wallet: true, operations_prompt_wallet: true, status_page_replaced_by_docs: true,
-    documentation_sections: 10, wallet_modal_width: walletWidth, wallet_modal_notes_removed: true,
+    documentation_sections: documentationSections, wallet_modal_width: walletWidth, wallet_modal_notes_removed: true,
     overview_manage_link_removed: true, responsive: [1440, 768, 390, 375, 320], page_errors: errors,
     signing_transfer: false, broadcast: false }, null, 2) + '\n');
   process.stdout.write('Wallet login, persistent session, empty-account setup, policy, payment approval/real fee review, images, and mobile layout passed.\n');
@@ -221,3 +301,5 @@ try {
   }
   throw error;
 } finally { if (browser) await browser.close(); gateway.kill('SIGINT'); }
+}
+await verify();
