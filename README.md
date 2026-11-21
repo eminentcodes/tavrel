@@ -188,6 +188,10 @@ Keep that key private and preserve it across deployments. Replacing it prevents 
 
 Railway supplies `PORT`; the app listens on `0.0.0.0`. The configured health check is `/health`. Successful startup logs `Tavrel ready at https://YOUR_DOMAIN`. Open that domain and connect the wallet configured above. An existing ledger's owner cannot be replaced by changing the variable.
 
+If Deploy Logs repeat **Set TAVREL_PUBLIC_ORIGIN to your HTTPS domain**, the image has built and the container is reaching Tavrel's startup. Under **Settings → Networking → Public Networking**, choose **Generate Domain**, targeting port **8080** unless you changed `PORT`. Copy the generated domain and set `TAVREL_PUBLIC_ORIGIN` to `https://` followed by that hostname in the service's **Variables** tab. For example, a generated hostname `tavrel-production-1234.up.railway.app` needs `https://tavrel-production-1234.up.railway.app`. Use your actual hostname, with no `/dashboard`, other path, or custom port. Apply the variable changes and redeploy. Railway's automatic `RAILWAY_PUBLIC_DOMAIN` also works when present; an explicitly set `TAVREL_PUBLIC_ORIGIN` takes precedence and must be valid.
+
+Set `TAVREL_OWNER_WALLET` at the same time, using your public wallet address. Otherwise startup will next stop with **Set TAVREL_OWNER_WALLET**. No model API key is involved. Once startup succeeds, open `https://YOUR_DOMAIN/health`; it should return JSON with `status` equal to `ready`.
+
 Each deployment has one account owner. Visitors and judges can browse the public routes; account operations require that owner's wallet. Judges can run their own local installation to test with their own wallet. The hosted app makes no LLM calls and needs no model API key.
 
 The default image supports invoice tasks, wallet login, manual transfers, automatic agent wallets, and receipt tracking. Optional **policy proof generation** requires separate local proving setup and is not included in this image. The app hides unavailable proof actions; native tVFY payments remain independent of that optional proof.
