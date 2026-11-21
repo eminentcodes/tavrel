@@ -1,10 +1,24 @@
 # Tavrel verification
 
-## Railway startup and latest connection repair
+## Public wallet accounts
+
+Hosted Tavrel now supports signed wallet self-registration with a separate payment ledger for each account. A fresh Railway deployment needs no preset `TAVREL_OWNER_WALLET`. The registered owner of an existing shared ledger retains that ledger, while new wallets receive empty accounts. The configured HTTPS origin, Secure cookies, signature binding, and same-origin registration checks remain enforced.
+
+[Public-account tests](../tests/test_public_accounts.py) exercise two actual sr25519 wallet signatures, separate agents and allowances, equal invoice references in different accounts, cross-account payment/approval/policy/wallet/token rejection, revocation, session and token routing after restart, forged-signature rejection, and legacy data preservation. No live transfer is signed or submitted by these tests.
+
+The complete backend regression passed **158 tests in 241.193 seconds** before the final atomic registration improvement. After that improvement, **seven focused public-account/hosted-settings tests passed in 112.491 seconds**, including an injected registration failure, transaction rollback, and a successful retry with the same actual wallet signature. Both commands use `python -W error::ResourceWarning -m unittest`; the focused command targets `tests.test_public_accounts tests.test_hosted.HostedSettingsTests`. The current production frontend build also passed.
+
+**Two additional migration tests passed in 2.438 seconds**, targeting `tests.test_public_accounts.PublicAccountMigrationTests`: an empty legacy registry with multiple registered wallets recovers separate accounts, while an unowned ledger with actual payment data requires explicit legacy assignment and retains its agent and allowance. These tests create no live wallets or transfers.
+
+The [updated isolated package check](railway-package-check.json) passed at **2026-11-21 16:17 UTC**. The built wheel includes `accounts.py`, starts with `TAVREL_OWNER_WALLET` absent, serves all three frontend entrypoint assets, verifies an actual wallet self-registration signature, uses Secure cookies, and runs bundled wallet derivation without source-tree dependencies or runtime `node_modules`. This is a Windows package check; a Linux Docker image and the deployed Railway workflow remain unobserved. A read-only request to the supplied Railway `/health` still returned **502 Application failed to respond** before source publication.
+
+The local CLI retains its single-account gateway behavior. Public operator routes accept wallet sessions and reject bearer credentials; scoped agent tokens route to their issuing wallet's ledger and are revalidated against that ledger. Account and token mappings persist in the server volume.
+
+## Earlier Railway startup and connection repair
 
 The final complete backend regression passed **153 tests in 291.652 seconds**, using `python -W error::ResourceWarning -m unittest discover -s tests -v`. This includes the latest hosted configuration and signature-worker changes alongside existing invoice, allowance, permission, recovery, and settlement-accounting coverage.
 
-The supplied Railway log failed under Railpack 0.43.0 because no Python start command was detected. The repository now selects its Dockerfile explicitly, builds frontend/native helpers, and starts `python -m tavrel.hosted`. Hosted mode requires an explicit wallet owner and HTTPS domain, uses Secure cookies, and stores data in a persistent `/data` volume. One replica owns each ledger.
+The supplied Railway log failed under Railpack 0.43.0 because no Python start command was detected. The repository selects its Dockerfile explicitly, builds frontend/native helpers, and starts `python -m tavrel.hosted`. At that revision, hosted mode required an explicit wallet owner and HTTPS domain. The public-account change above removes the preset-owner requirement while retaining the HTTPS origin, Secure cookies, persistent `/data` volume, and one replica.
 
 **23 hosted/gateway/auth tests passed in 83.288 seconds**, including real signature login, pinned owner protection, hostile Host/Origin rejection, Secure logout, and Railway's limited health-check hostname. See [hosted tests](../tests/test_hosted.py). The production build and 16 Node wallet/login/API tests also passed after transfer codecs were removed from the login path.
 

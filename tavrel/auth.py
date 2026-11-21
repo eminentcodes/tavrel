@@ -33,9 +33,11 @@ def verify_signature(message, signature, account):
 
 
 class WalletAuth:
-    def __init__(self, engine, verifier=verify_signature):
+    def __init__(self, engine, verifier=verify_signature, *, multi_user=False):
         self.engine = engine
         self.verifier = verifier
+        self.multi_user = multi_user
+        self.account_registered = None
         self.pairing_ticket = secrets.token_urlsafe(32)
         self.pairing_expires = time.time() + 900
         with engine.connection() as db:
@@ -71,9 +73,9 @@ class WalletAuth:
         with self.engine.transaction() as db:
             registered = db.execute("SELECT 1 FROM operator_wallets WHERE account=?", (account,)).fetchone()
             has_owner = db.execute("SELECT 1 FROM operator_wallets LIMIT 1").fetchone()
-            if not registered and has_owner:
+            if not registered and has_owner and not self.multi_user:
                 raise PolicyError("operator_wallet_required", "Connect the wallet that was first used with this Tavrel account.", 403)
-            if not registered and not (valid_ticket or browser_setup):
+            if not registered and not (browser_setup or valid_ticket and not self.multi_user):
                 raise PolicyError("operator_wallet_required", "Open the Tavrel app in your browser to connect your first wallet.", 403)
             db.execute("DELETE FROM wallet_challenges WHERE expires<?", (time.time(),))
             if db.execute("SELECT COUNT(*) AS count FROM wallet_challenges WHERE consumed=0").fetchone()["count"] >= 100:
@@ -104,13 +106,16 @@ class WalletAuth:
                 raise PolicyError("wallet_challenge_expired", "This sign-in request expired or was already used.", 401)
             registered = db.execute("SELECT 1 FROM operator_wallets WHERE account=?", (row["account"],)).fetchone()
             if not registered:
-                if not row["bootstrap"] or db.execute("SELECT 1 FROM operator_wallets LIMIT 1").fetchone():
+                if not row["bootstrap"] or (not self.multi_user and db.execute("SELECT 1 FROM operator_wallets LIMIT 1").fetchone()):
                     raise PolicyError("operator_wallet_required", "Connect the wallet that was first used with this Tavrel account.", 403)
                 db.execute("INSERT INTO operator_wallets VALUES(?,?)", (row["account"], time.time()))
+                if self.account_registered:
+                    self.account_registered(db, row['account'])
             db.execute("UPDATE wallet_challenges SET consumed=1 WHERE id=?", (challenge_id,))
             db.execute("DELETE FROM operator_sessions WHERE expires<?", (time.time(),))
             db.execute("INSERT INTO operator_sessions VALUES(?,?,?)", (digest(token), row["account"], time.time() + SESSION_SECONDS))
-            self.engine.event(db, "operator_wallet_login", "Verified a native wallet login signature. No payment was signed.")
+            if not self.multi_user:
+                self.engine.event(db, "operator_wallet_login", "Verified a native wallet login signature. No payment was signed.")
         return {"authenticated": True, "account": row["account"], "address": wallet_address(row["account"])}, f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_SECONDS}"
 
     def logout(self, cookie_header):

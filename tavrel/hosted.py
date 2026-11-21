@@ -1,4 +1,4 @@
-"""Railway entrypoint: one persistent ledger with an explicitly pinned wallet owner."""
+"""Railway entrypoint: public wallet sign-in with separate persistent payment accounts."""
 import os
 from pathlib import Path
 import re
@@ -28,9 +28,7 @@ def settings(environ=None):
     domain = environ.get('RAILWAY_PUBLIC_DOMAIN', '')
     origin = public_origin(environ.get('TAVREL_PUBLIC_ORIGIN') or ('https://' + domain if domain else ''))
     owner = environ.get('TAVREL_OWNER_WALLET', '')
-    if not owner:
-        raise ValueError('Set TAVREL_OWNER_WALLET to the public Substrate address you will connect.')
-    owner = account_id(owner)
+    owner = account_id(owner) if owner else None
     try:
         port = int(environ.get('PORT', '8080'))
         if not 1 <= port <= 65535:
@@ -49,7 +47,7 @@ def main():
         key = operator_key(config['directory'], create=True)
         engine = Engine(config['directory'] / 'ledger.sqlite3')
         gateway = Gateway(('0.0.0.0', config['port']), engine, key, quiet=True,
-            public_origin=config['origin'], owner_wallet=config['owner'])
+            public_origin=config['origin'], owner_wallet=config['owner'], multi_user=True)
         engine.recover_interrupted()
         def stop(signum, frame):
             raise KeyboardInterrupt

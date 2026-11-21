@@ -32,21 +32,22 @@ class Gateway(ThreadingHTTPServer):
     daemon_threads = False
     allow_reuse_address = True
 
-    def __init__(self, address, engine: Engine, operator_token: str, quiet=False, *, public_origin=None, owner_wallet=None):
+    def __init__(self, address, engine: Engine, operator_token: str, quiet=False, *, public_origin=None, owner_wallet=None, multi_user=False):
         if public_origin:
             # Import lazily to keep the local CLI independent of hosted settings.
             from .hosted import public_origin as validate_origin
             public_origin = validate_origin(public_origin)
-            if not owner_wallet:
+            if not owner_wallet and not multi_user:
                 raise ValueError('Hosted Tavrel requires an explicitly configured owner wallet.')
         elif address[0] not in ("127.0.0.1", "localhost"):
             raise ValueError("This prototype binds only to loopback.")
         self.public_origin = public_origin
+        self.multi_user = multi_user
         self.engine = engine
         self.payments = PaymentLedger(engine)
         self.wallet_verifier = SignatureVerifier()
-        self.wallet_auth = WalletAuth(engine, verifier=self.wallet_verifier.verify)
-        if public_origin:
+        self.wallet_auth = WalletAuth(engine, verifier=self.wallet_verifier.verify, multi_user=multi_user)
+        if public_origin and not multi_user:
             owner = account_id(owner_wallet)
             with engine.transaction() as db:
                 owners = db.execute('SELECT account FROM operator_wallets').fetchall()
@@ -58,24 +59,36 @@ class Gateway(ThreadingHTTPServer):
         self.policy_proofs = PolicyProofs(self.settlement)
         self.agent_runs = AgentRuns(self.payments)
         self.agent_wallets = AgentWallets(self.settlement)
+        self.accounts = None
+        if multi_user:
+            from .accounts import WalletAccounts
+            self.accounts = WalletAccounts(self, legacy_owner=owner_wallet)
+            self.wallet_auth.account_registered = self.accounts.register
         self.operator_token = operator_token
         self.quiet = quiet
         super().__init__(address, Handler)
 
     def serve_forever(self, poll_interval=0.5):
         self.wallet_verifier.start()
-        self.settlement.start()
-        self.agent_runs.start()
-        self.agent_wallets.start()
+        if self.accounts:
+            self.accounts.start()
+        else:
+            self.settlement.start()
+            self.agent_runs.start()
+            self.agent_wallets.start()
         try:
             super().serve_forever(poll_interval)
         finally:
+            if self.accounts:
+                self.accounts.close()
             self.wallet_verifier.close()
             self.settlement.close()
             self.agent_runs.close()
             self.agent_wallets.close()
 
     def server_close(self):
+        if self.accounts:
+            self.accounts.close()
         self.wallet_verifier.close()
         self.agent_wallets.close()
         self.agent_runs.close()
@@ -133,8 +146,11 @@ class Handler(BaseHTTPRequestHandler):
         return value[7:]
 
     def operator(self):
-        if not self.headers.get("Authorization") and self.server.wallet_auth.session(self.headers.get("Cookie")):
-            return
+        session = self.server.wallet_auth.session(self.headers.get("Cookie"))
+        if not self.headers.get("Authorization") and session:
+            return session
+        if self.server.multi_user:
+            raise PolicyError('unauthorized', 'Sign in with your wallet to manage your account.', 401)
         token = self.bearer()
         if not token.isascii() or not secrets.compare_digest(token, self.server.operator_token):
             raise PolicyError("forbidden", "Operator access is required for this action.", 403)
@@ -207,6 +223,8 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and path == "/v1/auth/verify":
             body = fields(self.body(), ("challenge_id", "signature"))
             result, self.response_cookie = auth.verify(origin=origin, **body)
+            if self.server.accounts:
+                self.server.accounts.for_wallet(result['account'])
             return result
         if method == "POST" and path == "/v1/auth/logout":
             fields(self.body(), ())
@@ -214,23 +232,32 @@ class Handler(BaseHTTPRequestHandler):
             return {"authenticated": False}
         if method == "GET" and path in ("/", "/health"):
             return {"name": "Tavrel", "status": "ready", "network": "zkverify-volta", "interface": "Agent payment app and task-scoped API", "wallet_transfers_enabled": True}
+        context = self.server
+        owner_session = None
+        if self.server.accounts:
+            if path.startswith('/v1/agent/'):
+                context = self.server.accounts.for_token(self.bearer())
+            elif path.startswith('/v1/operator/'):
+                owner_session = self.operator()
+                context = self.server.accounts.for_wallet(owner_session['account'])
+            engine, payments = context.engine, context.payments
         if path.startswith("/v1/agent/"):
             task_id = engine.authenticate_task(self.bearer())
             if path == '/v1/agent/runs':
                 if method == 'GET':
-                    return self.server.agent_runs.list(task_id)
+                    return context.agent_runs.list(task_id)
                 if method == 'POST':
-                    return self.server.agent_runs.create(task_id, **fields(self.body(), ('goal', 'request_key', 'invoices')))
+                    return context.agent_runs.create(task_id, **fields(self.body(), ('goal', 'request_key', 'invoices')))
             match = re.fullmatch(r'/v1/agent/runs/(run_[a-f0-9]{16})(/resume|/cancel)?', path)
             if match:
                 if method == 'GET' and not match[2]:
-                    return self.server.agent_runs.get(match[1], task_id)
+                    return context.agent_runs.get(match[1], task_id)
                 if method == 'POST' and match[2] == '/resume':
                     fields(self.body(), ())
-                    return self.server.agent_runs.resume(match[1], task_id)
+                    return context.agent_runs.resume(match[1], task_id)
                 if method == 'POST' and match[2] == '/cancel':
                     fields(self.body(), ())
-                    return self.server.agent_runs.cancel(match[1], task_id)
+                    return context.agent_runs.cancel(match[1], task_id)
             if method == "GET" and path == "/v1/agent/payments/status":
                 return payments.status(task_id)
             if method == "POST" and path == "/v1/agent/payments/prepare":
@@ -251,38 +278,39 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and match:
                 return engine.request(match[1], task_id)
         elif path.startswith("/v1/operator/"):
-            self.operator()
+            if not owner_session:
+                self.operator()
             query = parse_qs(parsed.query)
             match = re.fullmatch(r'/v1/operator/tasks/(tsk_[a-f0-9]{16})/wallet', path)
             if match:
                 if method == 'GET':
-                    return self.server.agent_wallets.get(match[1])
+                    return context.agent_wallets.get(match[1])
                 if method == 'POST':
                     fields(self.body(), ())
-                    return self.server.agent_wallets.create(match[1])
+                    return context.agent_wallets.create(match[1])
                 if method == 'PATCH':
-                    return self.server.agent_wallets.configure(match[1], **fields(self.body(), ('enabled', 'expected_version'), ('fee_cap', 'hours')))
+                    return context.agent_wallets.configure(match[1], **fields(self.body(), ('enabled', 'expected_version'), ('fee_cap', 'hours')))
             if method == 'GET' and path == '/v1/operator/wallet/balance':
                 address = account_id(query.get('address', [''])[0])
-                return {**self.server.settlement.network('balance', address=address), 'wallet_address': wallet_address(address)}
+                return {**context.settlement.network('balance', address=address), 'wallet_address': wallet_address(address)}
             match = re.fullmatch(r'/v1/operator/tasks/(tsk_[a-f0-9]{16})/runs', path)
             if match:
                 if method == 'GET':
-                    return self.server.agent_runs.list(match[1])
+                    return context.agent_runs.list(match[1])
                 if method == 'POST':
-                    return self.server.agent_runs.create(match[1], **fields(self.body(), ('goal', 'request_key', 'invoices')))
+                    return context.agent_runs.create(match[1], **fields(self.body(), ('goal', 'request_key', 'invoices')))
             match = re.fullmatch(r'/v1/operator/runs/(run_[a-f0-9]{16})(/resume|/cancel)?', path)
             if match:
                 if method == 'GET' and not match[2]:
-                    return self.server.agent_runs.get(match[1])
+                    return context.agent_runs.get(match[1])
                 if method == 'POST' and match[2] == '/resume':
                     fields(self.body(), ())
-                    return self.server.agent_runs.resume(match[1])
+                    return context.agent_runs.resume(match[1])
                 if method == 'POST' and match[2] == '/cancel':
                     fields(self.body(), ())
-                    return self.server.agent_runs.cancel(match[1])
+                    return context.agent_runs.cancel(match[1])
             if method == "GET" and path == "/v1/operator/payments/status":
-                return {**payments.status(query.get("task_id", [None])[0]), 'proofs_available': self.server.policy_proofs.available()}
+                return {**payments.status(query.get("task_id", [None])[0]), 'proofs_available': context.policy_proofs.available()}
             if method == "PATCH" and path == "/v1/operator/payments/account":
                 body = fields(self.body(), ("budget",))
                 return payments.set_account(**body)
@@ -305,13 +333,13 @@ class Handler(BaseHTTPRequestHandler):
                     return payments.export(match[1], **body)
                 if method == "POST" and match[2] == "/quote":
                     body = fields(self.body(), ("expected_hash",))
-                    return self.server.settlement.quote(match[1], **body)
+                    return context.settlement.quote(match[1], **body)
                 if method == "POST" and match[2] == "/submit":
                     body = fields(self.body(), ("expected_hash", "quote_id", "signature"), ("signed_hex",))
-                    return self.server.settlement.submit(match[1], **body)
+                    return context.settlement.submit(match[1], **body)
                 if method == "POST" and match[2] == "/proof":
                     body = fields(self.body(), ("expected_hash",))
-                    return self.server.policy_proofs.generate(match[1], **body)
+                    return context.policy_proofs.generate(match[1], **body)
             if method == "GET" and path == "/v1/operator/status":
                 return engine.snapshot(query.get("task_id", [None])[0])
             if method == "GET" and path == "/v1/operator/services":
@@ -325,7 +353,10 @@ class Handler(BaseHTTPRequestHandler):
                 return engine.ledger(query.get("task_id", [None])[0], limit, offset)
             if method == "POST" and path == "/v1/operator/tasks":
                 body = fields(self.body(), ("name", "limit_cents", "threshold_cents", "allowed_services"), ("description", "require_approval"))
-                return engine.create_task(**body)
+                result = engine.create_task(**body)
+                if self.server.accounts:
+                    self.server.accounts.sync_tokens(owner_session['account'], context)
+                return result
             if method == "PATCH" and path == "/v1/operator/account":
                 body = fields(self.body(), ("limit_cents",))
                 engine.update_account(body["limit_cents"])
@@ -336,7 +367,10 @@ class Handler(BaseHTTPRequestHandler):
                     return engine.update_task(match[1], self.body())
                 if method == "POST" and match[2]:
                     fields(self.body(), ())
-                    return engine.rotate_token(match[1])
+                    result = engine.rotate_token(match[1])
+                    if self.server.accounts:
+                        self.server.accounts.sync_tokens(owner_session['account'], context)
+                    return result
                 if method == "GET" and not match[2]:
                     return engine.task(match[1])
             match = re.fullmatch(r"/v1/operator/requests/(req_[a-f0-9]{16})(/decision|/reconcile)?", path)

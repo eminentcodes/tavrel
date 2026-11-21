@@ -1,7 +1,7 @@
 {
-  "observed_at": "2026-11-21T14:37:50.303943+00:00",
+  "observed_at": "2026-11-21T16:17:36.365212+00:00",
   "wheel": "tavrel-0.3.0-py3-none-any.whl",
-  "sha256": "cc968745d3a8f87b37c5927e469ff9ab8ed88aafaa90bb730bad385b5a43aece",
+  "sha256": "bbf2169ef82f2cfa1ef8ad2777c6febf93e9f9d2127004b05335ab042a0ddc6d",
   "isolated_from_source_tree": true,
   "no_runtime_node_modules": true,
   "hermes_packaged": false,
@@ -11,6 +11,8 @@
   "actual_signature_login": true,
   "secure_cookie": true,
   "bundled_agent_wallet_derivation": true,
+  "preset_owner_required": false,
+  "signed_wallet_self_registration": true,
   "optional_proof_generation_available": false,
   "docker_image_built": false,
   "railway_deployed": false,

@@ -91,9 +91,9 @@ This guide exercises the actual application and includes the agent's role. Walle
 
 ### 1. Start the app and connect your wallet
 
-Follow [Getting started](#getting-started). Open `http://127.0.0.1:8787` and choose **Launch app**. Browsing works before connecting.
+Follow [Getting started](#getting-started). Open `http://127.0.0.1:8787` and choose **Launch app**. For a hosted installation, open its HTTPS domain instead. Browsing works before connecting.
 
-Open the app, choose **Connect wallet**, select **SubWallet**, **Talisman**, or the **Polkadot extension**, and sign the login message with a Substrate account. Your first verified wallet becomes the account owner. Subsequent sign-ins use that wallet; no terminal setup link is needed.
+Open the app, choose **Connect wallet**, select **SubWallet**, **Talisman**, or the **Polkadot extension**, and sign the login message with a Substrate account. On the hosted app, each wallet opens its own account. A local installation uses its first verified wallet for later sign-ins; no terminal setup link is needed.
 
 Claim tVFY for the intended **sender** using the [Volta faucet](https://www.faucy.com/zkverify-volta). The sender needs funds for the amount, fee, and account minimum. Login alone needs no tokens.
 
@@ -168,12 +168,11 @@ The repository includes a [Dockerfile](Dockerfile) and [Railway configuration](r
 
 1. Deploy the latest `main` from this repository with the repository root as the service root. Railway should use the **Dockerfile** builder. Remove any old build or start command overrides so it uses the Dockerfile commands.
 2. Under **Networking**, generate a public HTTPS domain. Railway supplies `RAILWAY_PUBLIC_DOMAIN`; for a custom domain, set `TAVREL_PUBLIC_ORIGIN` to its full HTTPS origin, such as `https://payments.example.com`, without a path.
-3. Add a persistent volume mounted at **`/data`**. Keep **one replica**: the SQLite ledger, login sessions, allowance reservations, and encrypted agent wallets belong to that volume.
+3. Add a persistent volume mounted at **`/data`**. Keep **one replica**: wallet account registration, separate SQLite payment ledgers, sessions, reservations, and encrypted agent wallets belong to that volume.
 4. Set these service variables, then redeploy:
 
 | Variable | Value |
 | --- | --- |
-| `TAVREL_OWNER_WALLET` | The public Substrate address of the wallet you will connect. SS58 or a 32-byte public AccountId is accepted. |
 | `TAVREL_DATA_DIR` | `/data`, matching the volume mount. |
 | `TAVREL_WALLET_VAULT_KEY` | A stable Fernet encryption key for newly created automatic agent wallets. Generate it once using the command below. |
 | `TAVREL_PUBLIC_ORIGIN` | Optional when using Railway's generated domain; required for a custom domain. |
@@ -186,13 +185,15 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 Keep that key private and preserve it across deployments. Replacing it prevents existing agent wallets from decrypting. A Windows-created vault uses Windows profile encryption and cannot be moved to Linux merely by copying its files; create a separate hosted agent wallet instead.
 
-Railway supplies `PORT`; the app listens on `0.0.0.0`. The configured health check is `/health`. Successful startup logs `Tavrel ready at https://YOUR_DOMAIN`. Open that domain and connect the wallet configured above. An existing ledger's owner cannot be replaced by changing the variable.
+Railway supplies `PORT`; the app listens on `0.0.0.0`. The configured health check is `/health`. Successful startup logs `Tavrel ready at https://YOUR_DOMAIN`. Open that domain and connect your own wallet. A new deployment needs no preset wallet address.
 
 If Deploy Logs repeat **Set TAVREL_PUBLIC_ORIGIN to your HTTPS domain**, the image has built and the container is reaching Tavrel's startup. Under **Settings → Networking → Public Networking**, choose **Generate Domain**, targeting port **8080** unless you changed `PORT`. Copy the generated domain and set `TAVREL_PUBLIC_ORIGIN` to `https://` followed by that hostname in the service's **Variables** tab. For example, a generated hostname `tavrel-production-1234.up.railway.app` needs `https://tavrel-production-1234.up.railway.app`. Use your actual hostname, with no `/dashboard`, other path, or custom port. Apply the variable changes and redeploy. Railway's automatic `RAILWAY_PUBLIC_DOMAIN` also works when present; an explicitly set `TAVREL_PUBLIC_ORIGIN` takes precedence and must be valid.
 
-Set `TAVREL_OWNER_WALLET` at the same time, using your public wallet address. Otherwise startup will next stop with **Set TAVREL_OWNER_WALLET**. No model API key is involved. Once startup succeeds, open `https://YOUR_DOMAIN/health`; it should return JSON with `status` equal to `ready`.
+If an older image logs **Set TAVREL_OWNER_WALLET**, deploy the latest `main`. Public startup no longer requires this variable. Once startup succeeds, open `https://YOUR_DOMAIN/health`; it should return JSON with `status` equal to `ready`.
 
-Each deployment has one account owner. Visitors and judges can browse the public routes; account operations require that owner's wallet. Judges can run their own local installation to test with their own wallet. The hosted app makes no LLM calls and needs no model API key.
+Visitors and judges can browse without connecting. Signing in with a wallet creates or opens **that wallet's account**: its agents, recipients, allowances, approvals, invoices, and encrypted agent wallets are separate from other users. Task tokens route to the account that issued them and cannot approve or administer another user's account. No LLM calls or model API key are needed.
+
+An existing single-owner ledger stays associated with its registered wallet automatically; other users receive new empty accounts. `TAVREL_OWNER_WALLET` is optional only for assigning an old ledger that already contains data but has no registered owner. It does not restrict new public sign-ins. The local `python -m tavrel serve` command retains its existing single-account behavior and CLI access. Hosted account operations use signed wallet sessions.
 
 The default image supports invoice tasks, wallet login, manual transfers, automatic agent wallets, and receipt tracking. Optional **policy proof generation** requires separate local proving setup and is not included in this image. The app hides unavailable proof actions; native tVFY payments remain independent of that optional proof.
 
@@ -313,6 +314,7 @@ The bundle's SHA-256 reference identifies the actual artifact. `zkverify_transac
 | [settlement.py](tavrel/settlement.py) | Signing quotes, durable transaction records, recovery, expiry, and finality accounting. |
 | [native_rpc.mjs](tavrel/native_rpc.mjs) | Live metadata/balance/fee reads, signature inspection, native submission, finalized block/event scanning. |
 | [auth.py](tavrel/auth.py) | Registered wallet ownership, expiring login challenges, replay prevention, and revocable sessions. |
+| [accounts.py](tavrel/accounts.py) | Separate hosted wallet ledgers, legacy-owner preservation, and owner-scoped task-token routing. |
 | [agent.py](tavrel/agent.py) | Invoice task execution and status watching through restricted agent APIs. |
 | [agent_runs.py](tavrel/agent_runs.py) | Deterministic invoice validation, durable action plans, scoped runs, and retry identities. |
 | [wallet_verifier.py](tavrel/wallet_verifier.py) | Reuses native crypto for wallet login with bounded waits and independent request IDs. |
@@ -353,7 +355,8 @@ After proof setup, run `node --test tests/policy-proof.test.mjs` to check the ac
 | [Wallet login tests](tests/wallet-login.test.mjs) | Cancelled or timed-out signatures never reach verification; successful login signs the exact challenge once. |
 | [Signature-worker tests](tests/test_wallet_verifier.py) | Actual signatures, changed claims, concurrent callers, worker recovery, and fail-closed timeouts. |
 | [Hosted tests](tests/test_hosted.py) | HTTPS domain validation, Railway health checks, pinned wallet ownership, actual message signatures, and Secure login/logout cookies. |
-| [Packaged hosted runtime](artifacts/railway-package-check.json) | Built wheel runs outside the source tree, serves frontend assets, verifies a real login signature, and derives an agent-wallet address using bundled helpers without runtime node_modules. Docker/Railway deployment remains unobserved. |
+| [Public account tests](tests/test_public_accounts.py) | Two actual wallet signatures, separate agents/allowances/invoices, cross-account rejection, token rotation, session/restart persistence, atomic registration rollback, and legacy migration/data preservation. |
+| [Packaged hosted runtime](artifacts/railway-package-check.json) | Built wheel starts without a preset owner outside the source tree, serves frontend assets, verifies a real wallet self-registration signature, and derives an agent-wallet address using bundled helpers without runtime node_modules. Docker/Railway deployment remains unobserved. |
 | [Latest wallet browser record](artifacts/ui/wallet-connection-proof.json) | Modal-close cancellation, ignored late replies, retry, actual native-signature login, and removal of Cancel connection. Live balance and installed extension speed are outside this focused check. |
 | [Verifier timing record](artifacts/wallet-verifier-check.json) | Three cold and three reused native-verifier calls with an offline fixture; excludes extension and human signing time. Reproduce with `python scripts/check-wallet-verifier.py`. |
 | [Invoice task tests](tests/test_agent_runs.py) | Input validation, exact ledger outcomes, scoped access, duplicate references, crash recovery, cancellation, recipient binding, and retained historical runs. |

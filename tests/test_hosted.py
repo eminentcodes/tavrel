@@ -27,7 +27,8 @@ class HostedSettingsTests(unittest.TestCase):
                        'https://tavrel.example#fragment', 'https://tavrel.example:8787'):
             with self.subTest(origin=origin), self.assertRaises(ValueError):
                 public_origin(origin)
-        for changes in ({'RAILWAY_PUBLIC_DOMAIN': ''}, {'TAVREL_OWNER_WALLET': ''}, {'PORT': '0'}, {'PORT': 'bad'}):
+        self.assertIsNone(settings({'RAILWAY_PUBLIC_DOMAIN': 'tavrel.example'})['owner'])
+        for changes in ({'RAILWAY_PUBLIC_DOMAIN': ''}, {'PORT': '0'}, {'PORT': 'bad'}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 settings({'RAILWAY_PUBLIC_DOMAIN': 'tavrel.example', 'TAVREL_OWNER_WALLET': owner, **changes})
 
