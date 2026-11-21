@@ -25,7 +25,7 @@ def arrow(path, label=None, x=0, y=0):
     return content
 
 def svg(title, description, height, body):
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 {height}" role="img" aria-labelledby="title desc">
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="{height}" viewBox="0 0 1400 {height}" role="img" aria-labelledby="title desc">
 <title id="title">{escape(title)}</title><desc id="desc">{escape(description)}</desc>
 <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="none" stroke="{PURPLE}" stroke-width="1.4"/></marker></defs>
 <rect width="1400" height="{height}" rx="30" fill="#f0f0ee"/>
