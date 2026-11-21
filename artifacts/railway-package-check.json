@@ -1,0 +1,18 @@
+{
+  "observed_at": "2026-11-21T14:37:50.303943+00:00",
+  "wheel": "tavrel-0.3.0-py3-none-any.whl",
+  "sha256": "cc968745d3a8f87b37c5927e469ff9ab8ed88aafaa90bb730bad385b5a43aece",
+  "isolated_from_source_tree": true,
+  "no_runtime_node_modules": true,
+  "hermes_packaged": false,
+  "hosted_startup": true,
+  "railway_health_host": true,
+  "frontend_assets_served": 3,
+  "actual_signature_login": true,
+  "secure_cookie": true,
+  "bundled_agent_wallet_derivation": true,
+  "optional_proof_generation_available": false,
+  "docker_image_built": false,
+  "railway_deployed": false,
+  "transfers_submitted": false
+}

@@ -70,15 +70,16 @@ export async function walletAccounts(source, options = {}) {
   const pending = walletProvider(source, options);
   const cached = providers.get(source);
   try {
-    const [provider, { decodeAddress }] = await Promise.all([pending, walletRequest(warmWallet, options)]);
+    const provider = await pending;
     const accounts = await walletRequest(() => provider.accounts.get(), options);
     if (!Array.isArray(accounts)) throw new Error('The wallet could not list its accounts. Unlock it and reconnect.');
     return accounts.flatMap(account => {
-      try {
-        // Ethereum accounts do not represent native zkVerify AccountId32 wallets.
-        if (account.type === 'ethereum' || decodeAddress(account.address).length !== 32) return [];
-        return [{ ...account, meta: { name: account.name, source } }];
-      } catch { return []; }
+      // Accounts come from the selected extension. The server checks the actual
+      // SS58 checksum before issuing a sign-in challenge. Load full codecs only
+      // when matching the sender of a transfer, keeping login free of crypto downloads.
+      if (!account || account.type === 'ethereum' || typeof account.address !== 'string'
+          || !(/^(?:0x[0-9a-fA-F]{64}|[1-9A-HJ-NP-Za-km-z]{35,50})$/.test(account.address))) return [];
+      return [{ ...account, meta: { name: account.name, source } }];
     });
   } catch (error) {
     if (providers.get(source) === cached) providers.delete(source);

@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 
-from hermes_plugin import GatewayError, make_handlers
+from tavrel.client import GatewayError
 from tavrel.engine import PolicyError
 from tests.fixtures import demo_account
 from tavrel.payments import PaymentLedger, account_id, token_amount, units
@@ -227,15 +227,14 @@ class PaymentGatewayTests(GatewayCase):
                 self.agent.request("POST", "/v1/agent/payments/prepare", {"recipient": "search", "amount": "1", "purpose": "Invoice", "request_key": "injected", **extra})
             self.assertEqual(error.exception.status, 400)
 
-    def test_all_native_plugin_tools_round_trip_without_signing(self):
-        handlers = make_handlers(lambda: self.agent)
-        task = json.loads(handlers["tavrel_payment_task"]({"task_key": "native", "payments": [{"recipient": "search", "amount": "2", "purpose": "Invoice"}]}))["result"]
-        payment = json.loads(handlers["tavrel_payment_intent"]({"payment_id": task["intents"][0]["id"]}))["result"]
-        status = json.loads(handlers["tavrel_payment_status"]({}))["result"]
+    def test_native_payment_client_round_trip_without_signing(self):
+        task = self.agent.request("POST", "/v1/agent/payments/task", {"task_key": "native", "payments": [{"recipient": "search", "amount": "2", "purpose": "Invoice"}]})
+        payment = self.agent.request("GET", "/v1/agent/payments/" + task["intents"][0]["id"])
+        status = self.agent.request("GET", "/v1/agent/payments/status")
         self.assertEqual(payment["status"], "ready_for_signature")
         self.assertTrue(status["signing_enabled"])
         self.assertFalse(payment["broadcast"])
-        direct = json.loads(handlers["tavrel_prepare_payment"]({"recipient": "compute", "amount": "6", "purpose": "Invoice", "request_key": "direct"}))["result"]
+        direct = self.agent.request("POST", "/v1/agent/payments/prepare", {"recipient": "compute", "amount": "6", "purpose": "Invoice", "request_key": "direct"})
         self.assertEqual(direct["status"], "pending_approval")
         self.assertNotIn(self.task_token, json.dumps(status))
 

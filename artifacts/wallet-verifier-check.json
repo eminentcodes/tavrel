@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-11-21T09:05:32.477727+00:00",
+  "native_crypto": true,
+  "public_offline_fixture": true,
+  "actual_signature_verified": true,
+  "changed_message_rejected": true,
+  "separate_process_milliseconds": [
+    3081.707,
+    2730.952,
+    3658.617
+  ],
+  "first_worker_verification_milliseconds": 11687.822,
+  "reused_worker_milliseconds": [
+    156.44,
+    528.456,
+    143.528
+  ],
+  "installed_wallet_tested": false,
+  "network_requests": false,
+  "signed_transfer": false,
+  "submitted_transfer": false,
+  "timing_limit": "Three calls per mode on this Windows host; excludes extension and human signing time."
+}

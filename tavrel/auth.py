@@ -9,7 +9,7 @@ import subprocess
 import time
 
 from .engine import PolicyError, digest
-from .payments import account_id
+from .payments import account_id, wallet_address
 
 
 COOKIE = "tavrel_operator"
@@ -33,8 +33,9 @@ def verify_signature(message, signature, account):
 
 
 class WalletAuth:
-    def __init__(self, engine):
+    def __init__(self, engine, verifier=verify_signature):
         self.engine = engine
+        self.verifier = verifier
         self.pairing_ticket = secrets.token_urlsafe(32)
         self.pairing_expires = time.time() + 900
         with engine.connection() as db:
@@ -93,7 +94,7 @@ class WalletAuth:
             row = db.execute("SELECT * FROM wallet_challenges WHERE id=?", (challenge_id,)).fetchone()
         if not row or row["consumed"] or row["expires"] <= time.time() or row["origin"] != origin:
             raise PolicyError("wallet_challenge_expired", "This sign-in request expired or was already used. Connect again.", 401)
-        if not verify_signature(row["message"], signature, row["account"]):
+        if not self.verifier(row["message"], signature, row["account"]):
             raise PolicyError("invalid_wallet_signature", "The signature does not match this account and sign-in request.", 401)
         token = secrets.token_urlsafe(32)
         with self.engine.transaction() as db:
@@ -110,7 +111,7 @@ class WalletAuth:
             db.execute("DELETE FROM operator_sessions WHERE expires<?", (time.time(),))
             db.execute("INSERT INTO operator_sessions VALUES(?,?,?)", (digest(token), row["account"], time.time() + SESSION_SECONDS))
             self.engine.event(db, "operator_wallet_login", "Verified a native wallet login signature. No payment was signed.")
-        return {"authenticated": True, "account": row["account"]}, f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_SECONDS}"
+        return {"authenticated": True, "account": row["account"], "address": wallet_address(row["account"])}, f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_SECONDS}"
 
     def logout(self, cookie_header):
         cookie = SimpleCookie()

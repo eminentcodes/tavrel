@@ -106,8 +106,8 @@ export function App() {
     {error && <div className="feedback error" role="alert">{error}</div>}{notice && <div className="feedback success" role="status">{notice}</div>}{page}</main>
   </div>{modal?.type === 'agent' && <NewAgent {...props} close={() => setModal(null)} />}
   {modal?.type === 'prepare' && <Prepare {...props} task={modal.task} policy={modal.policy} close={() => setModal(null)} />}
-  {modal?.type === 'wallet' && <Modal title="Sign in with your wallet." className="wallet-modal" close={() => setModal(null)}><Connection embedded busy={busy} error={error} onSignedIn={async (account, signal) => {
-    setBusy(true); try { const status = await request('/v1/auth/status', 'GET', undefined, { signal }); await enter(account, status.address, signal); setModal(null); }
+  {modal?.type === 'wallet' && <Modal title="Sign in with your wallet." className="wallet-modal" close={() => setModal(null)}><Connection embedded busy={busy} error={error} onSignedIn={async (result, signal) => {
+    setBusy(true); try { await enter(result.account, result.address, signal); setModal(null); }
     finally { setBusy(false); }
   }} /></Modal>}
   </div>;

@@ -1,7 +1,7 @@
 from http.client import HTTPConnection
 import json
 
-from hermes_plugin import GatewayError
+from tavrel.client import GatewayError
 from tests.support import GatewayCase
 
 

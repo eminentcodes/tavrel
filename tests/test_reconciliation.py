@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
-from hermes_plugin import GatewayError
+from tavrel.client import GatewayError
 from tavrel.engine import Engine, PolicyError
 from tavrel.services import ProviderRejected
 from tests.support import EngineCase, GatewayCase

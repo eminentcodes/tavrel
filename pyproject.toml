@@ -13,9 +13,8 @@ dependencies = ["cryptography>=46,<51"]
 tavrel = "tavrel.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["tavrel*", "hermes_plugin*"]
+include = ["tavrel*"]
 
 [tool.setuptools.package-data]
-hermes_plugin = ["plugin.yaml"]
 tavrel = ["wallet_verify.mjs", "native_rpc.mjs", "native_signing.mjs", "agent_wallet.mjs", "*.bundle.mjs", "web/*", "web/assets/*"]
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Wallet } from '@phosphor-icons/react';
-import { installedWallets, rememberWallet, walletAccounts, warmWallet } from '../wallet.js';
+import { installedWallets, rememberWallet, walletAccounts } from '../wallet.js';
 import { authenticateWallet } from '../wallet-login.js';
 import { Button, Brand, GlassForms, Link, Modal } from '../components.jsx';
 
@@ -13,7 +13,6 @@ export function Connection({ busy, error, onSignedIn, embedded = false }) {
   const [walletError, setWalletError] = useState('');
   const attempt = useRef(null);
   useEffect(() => {
-    warmWallet().catch(() => {});
     if (ticket) window.history.replaceState({}, '', window.location.pathname);
     return () => { attempt.current?.abort(); attempt.current = null; };
   }, []);
@@ -36,7 +35,7 @@ export function Connection({ busy, error, onSignedIn, embedded = false }) {
     signal.throwIfAborted();
     rememberWallet(account.meta.source);
     setProgress('Opening your account');
-    await onSignedIn(result.account, signal);
+    await onSignedIn(result, signal);
   }
   function signIn(account) {
     return runConnection(signal => finishSignIn(account, signal), 'Preparing sign-in');
@@ -50,11 +49,6 @@ export function Connection({ busy, error, onSignedIn, embedded = false }) {
       else setAccounts(available);
     }, 'Allow wallet access');
   }
-  function cancelConnection() {
-    attempt.current?.abort(); attempt.current = null;
-    setConnecting(false); setProgress('');
-    setWalletError('Connection cancelled. Close any pending request in your wallet before trying again.');
-  }
   async function connectWallet() {
     setWalletError('');
     const available = installedWallets();
@@ -65,7 +59,7 @@ export function Connection({ busy, error, onSignedIn, embedded = false }) {
   return <div className={embedded ? 'wallet-embedded' : 'connection-page'}>{!embedded && <Brand />}<div className={embedded ? '' : 'connection-grid'}>{!embedded && <div className="connection-art"><GlassForms small /><h1>Payments,<br />under your control.</h1></div>}<div className="connection-form">
     <span className="wallet-symbol"><Wallet size={28} weight="light" /></span>{!embedded && <h2>Connect your wallet.</h2>}<p>Sign in to manage your agents, payment rules, and approvals.</p>
     <Button busy={busy || connecting} onClick={connectWallet}>{connecting ? progress : 'Connect wallet'}<ArrowRight size={18} /></Button>
-    {connecting && <div className="wallet-pending" role="status">{['Allow wallet access', 'Confirm in your wallet'].includes(progress) && <p>Open your wallet extension from the browser toolbar, unlock it, and check its pending request.</p>}<button type="button" className="text-link" onClick={cancelConnection}>Cancel connection</button></div>}
+    {connecting && ['Allow wallet access', 'Confirm in your wallet'].includes(progress) && <div className="wallet-pending" role="status"><p>Open your wallet extension from the browser toolbar, unlock it, and check its pending request.</p></div>}
     {wallets.length > 0 && <div className="wallet-account-list" aria-label="Choose a wallet">{wallets.map(wallet => <button key={wallet.source} disabled={connecting} onClick={() => connectSource(wallet.source)}><Wallet size={22} /><strong>{wallet.name}</strong><ArrowRight size={17} /></button>)}</div>}
     {(error || walletError) && <div className="feedback error" role="alert">{walletError || error}</div>}
     <div className="wallet-options"><span>Substrate wallets</span><a href="https://www.subwallet.app/" target="_blank" rel="noreferrer">SubWallet <ArrowUpRight size={13} /></a><a href="https://talisman.xyz/" target="_blank" rel="noreferrer">Talisman <ArrowUpRight size={13} /></a></div>

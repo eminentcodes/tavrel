@@ -5,7 +5,7 @@ import subprocess
 import sys
 from threading import Thread
 
-from hermes_plugin import TavrelClient
+from tavrel.client import TavrelClient
 from tavrel.engine import PolicyError
 from tavrel.runtime import GatewayLock, operator_key, read_task_connection
 from tests.support import GatewayCase

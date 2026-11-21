@@ -214,7 +214,7 @@ class SettlementAPITests(GatewayCase):
         self.gateway.payments.set_account('10')
         self.gateway.payments.configure(self.task_id, **policy_arguments())
         payment = self.gateway.payments.prepare(self.task_id, 'search', '2', 'Invoice', 'invoice')
-        from hermes_plugin import GatewayError
+        from tavrel.client import GatewayError
         for action, body in (('quote', {'expected_hash': payment['approval_hash']}),
             ('submit', {'expected_hash': payment['approval_hash'], 'quote_id': 'invalid', 'signature': SIGNATURE})):
             with self.assertRaises(GatewayError):

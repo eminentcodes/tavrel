@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 from threading import Lock, Thread
 import unittest
 
-from hermes_plugin import TavrelClient
+from tavrel.client import TavrelClient
 from tavrel.engine import Engine
 from tavrel.runtime import operator_key
 from tavrel.server import Gateway

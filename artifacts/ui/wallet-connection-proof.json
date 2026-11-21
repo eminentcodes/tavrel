@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-11-21T09:43:15.996Z",
+  "real_gateway": true,
+  "isolated_empty_ledger": true,
+  "provider": "Controlled SubWallet-compatible native interface with actual sr25519 signatures",
+  "installed_extension_tested": false,
+  "subwallet_native_enable_requested": true,
+  "cancel_connection_button_removed": true,
+  "login_crypto_downloads": 0,
+  "unselected_wallet_requests": 0,
+  "cancelled_authorization_ignored": true,
+  "cancelled_signature_ignored": true,
+  "cancelled_requests_did_not_register_wallet": true,
+  "retry_after_cancel": true,
+  "successful_verification_requests": 1,
+  "connection_milliseconds": 3606,
+  "wallet_balance_pill": true,
+  "live_balance_validated": false,
+  "volta_address_display": true,
+  "page_errors": [],
+  "signed_transfer": false,
+  "submitted_transfer": false
+}

@@ -3,6 +3,9 @@ web/dist/
 __pycache__/
 *.py[cod]
 *.egg-info/
+build/
+dist/
+*.whl
 .venv/
 .tavrel/
 .cache/

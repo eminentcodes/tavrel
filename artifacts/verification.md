@@ -1,5 +1,23 @@
 # Tavrel verification
 
+## Railway startup and latest connection repair
+
+The final complete backend regression passed **153 tests in 291.652 seconds**, using `python -W error::ResourceWarning -m unittest discover -s tests -v`. This includes the latest hosted configuration and signature-worker changes alongside existing invoice, allowance, permission, recovery, and settlement-accounting coverage.
+
+The supplied Railway log failed under Railpack 0.43.0 because no Python start command was detected. The repository now selects its Dockerfile explicitly, builds frontend/native helpers, and starts `python -m tavrel.hosted`. Hosted mode requires an explicit wallet owner and HTTPS domain, uses Secure cookies, and stores data in a persistent `/data` volume. One replica owns each ledger.
+
+**23 hosted/gateway/auth tests passed in 83.288 seconds**, including real signature login, pinned owner protection, hostile Host/Origin rejection, Secure logout, and Railway's limited health-check hostname. See [hosted tests](../tests/test_hosted.py). The production build and 16 Node wallet/login/API tests also passed after transfer codecs were removed from the login path.
+
+The updated [focused wallet browser record](ui/wallet-connection-proof.json) verifies native selected-provider access, modal-close cancellation, ignored late authorization/signatures, explicit retry, and actual sr25519 login against an isolated gateway. Login took **3.606 seconds**. The Cancel connection button is absent and login requested no transfer-codec downloads. It checks the compact pill's presence, but does not validate live balance retrieval. This run uses a controlled provider; installed SubWallet timing remains unobserved.
+
+[Offline timing](wallet-verifier-check.json) recorded cold verifier calls at about 2.7–3.7 seconds and reused-worker calls at 143–528 ms. Four [worker tests](../tests/test_wallet_verifier.py) cover actual signatures, altered claims, concurrent request isolation, restart recovery, and fail-closed timeouts. These timings exclude extension/human signing time.
+
+The obsolete Hermes folder, plugin-only scripts, and plugin-only tests are removed. Shared HTTP/credential/payment checks now use the standalone Tavrel client; [client tests](../tests/test_client.py) retain those boundaries. Old plugin archives remain ignored.
+
+The final [packaged runtime check](railway-package-check.json) passed using the built wheel extracted outside the source tree with no runtime `node_modules`. It started the hosted gateway, accepted the Railway health hostname, served all three entrypoint assets, verified an actual sr25519 login, set a Secure cookie, and derived a native agent-wallet address using the bundled helper. The wheel contains no Hermes package. It correctly reports optional proof generation unavailable. This checks the package on Windows, not a Linux Docker build or actual Railway deployment. One earlier static-asset download was reset; all assets downloaded on the final diagnostic rerun without source changes or automatic retries.
+
+An interim 147-test backend run passed 146 tests and failed one authentication-fixture Node startup at its 15-second timeout during concurrent build/benchmark load. The exact failed test and checksum-before-challenge test passed on retry. An earlier focused browser reached login but timed out awaiting live balance RPC; focused login evidence now records that boundary explicitly and the full browser retains its balance check. Initial wheel packaging was blocked by sandbox permissions; the approved retry built successfully. No Docker image build, Railway deployment, funded transfer, or on-chain proof submission has been observed. The default Railway image excludes optional policy proving dependencies/setup.
+
 ## Deterministic invoice tasks, agent wallets, balance, and connection repair
 
 The current deterministic backend suite passed **145 tests in 191.321 seconds**. The focused invoice suite passed **17 tests in 8.841 seconds**, including whole-batch validation, scoped access, cancellation, restart/resume, legacy-run isolation, recipient alias binding, and invoice identity across batches. Two actual offline agent-wallet signature tests passed. Earlier build results below remain historical evidence rather than the current test count.
@@ -10,7 +28,7 @@ Offline agent-wallet signing and tamper/sender checks passed, and an actual Wind
 
 Read-only finalized Volta inspection and the authenticated balance route confirmed **1 tVFY** for the user's public account. The app displays the equivalent Volta SS58 address and a small top-right balance pill. No user allowance, recipient, or historical blocked intent was changed by these checks.
 
-After the user's installed SubWallet hang report, **16 focused Node tests passed** for wallet access, login, and API responses. They cover SubWallet's documented native `enable` interface, new-style `connect` wallets, selected-extension isolation, access/account/signature timeouts, explicit retry, cancelled HTTP requests, and late replies. A cancelled or timed-out signature never reaches `/v1/auth/verify`. The app now gives pending-request guidance and a Cancel connection action. These checks use controlled providers and do not establish that the user's installed extension popup opens.
+After the user's installed SubWallet hang report, **16 focused Node tests passed** for wallet access, login, and API responses. They cover SubWallet's documented native `enable` interface, new-style `connect` wallets, selected-extension isolation, access/account/signature timeouts, explicit retry, cancelled HTTP requests, and late replies. A cancelled or timed-out signature never reaches `/v1/auth/verify`. The earlier app gave pending-request guidance and a Cancel connection action; the latest repair above removes that action at the user's request. These checks use controlled providers and do not establish that the user's installed extension popup opens.
 
 The production build passed. A publication audit found **zero source/evidence files containing the privately reused provider key**. The key, wallet vault, user ledger, research, and plans remain excluded from publication.
 

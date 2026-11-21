@@ -1,9 +1,10 @@
-"""Loopback-only HTTP gateway with separate operator and task credentials."""
+"""Local or pinned HTTPS gateway with separate operator and task credentials."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
 import secrets
+import time
 from pathlib import Path
 import mimetypes
 from urllib.parse import parse_qs, urlsplit
@@ -11,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 from .engine import Engine, PolicyError
 from .payments import PaymentLedger, account_id, wallet_address
 from .auth import WalletAuth
+from .wallet_verifier import SignatureVerifier
 from .settlement import Settlement
 from .proofs import PolicyProofs
 from .agent_runs import AgentRuns
@@ -30,12 +32,28 @@ class Gateway(ThreadingHTTPServer):
     daemon_threads = False
     allow_reuse_address = True
 
-    def __init__(self, address, engine: Engine, operator_token: str, quiet=False):
-        if address[0] not in ("127.0.0.1", "localhost"):
+    def __init__(self, address, engine: Engine, operator_token: str, quiet=False, *, public_origin=None, owner_wallet=None):
+        if public_origin:
+            # Import lazily to keep the local CLI independent of hosted settings.
+            from .hosted import public_origin as validate_origin
+            public_origin = validate_origin(public_origin)
+            if not owner_wallet:
+                raise ValueError('Hosted Tavrel requires an explicitly configured owner wallet.')
+        elif address[0] not in ("127.0.0.1", "localhost"):
             raise ValueError("This prototype binds only to loopback.")
+        self.public_origin = public_origin
         self.engine = engine
         self.payments = PaymentLedger(engine)
-        self.wallet_auth = WalletAuth(engine)
+        self.wallet_verifier = SignatureVerifier()
+        self.wallet_auth = WalletAuth(engine, verifier=self.wallet_verifier.verify)
+        if public_origin:
+            owner = account_id(owner_wallet)
+            with engine.transaction() as db:
+                owners = db.execute('SELECT account FROM operator_wallets').fetchall()
+                if owners and (len(owners) != 1 or owners[0]['account'] != owner):
+                    raise ValueError('TAVREL_OWNER_WALLET does not match this ledger owner. Existing ownership was preserved.')
+                if not owners:
+                    db.execute('INSERT INTO operator_wallets VALUES(?,?)', (owner, time.time()))
         self.settlement = Settlement(self.payments)
         self.policy_proofs = PolicyProofs(self.settlement)
         self.agent_runs = AgentRuns(self.payments)
@@ -45,17 +63,20 @@ class Gateway(ThreadingHTTPServer):
         super().__init__(address, Handler)
 
     def serve_forever(self, poll_interval=0.5):
+        self.wallet_verifier.start()
         self.settlement.start()
         self.agent_runs.start()
         self.agent_wallets.start()
         try:
             super().serve_forever(poll_interval)
         finally:
+            self.wallet_verifier.close()
             self.settlement.close()
             self.agent_runs.close()
             self.agent_wallets.close()
 
     def server_close(self):
+        self.wallet_verifier.close()
         self.agent_wallets.close()
         self.agent_runs.close()
         self.settlement.close()
@@ -77,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         if getattr(self, "response_cookie", None):
-            self.send_header("Set-Cookie", self.response_cookie)
+            self.send_header("Set-Cookie", self.response_cookie + ('; Secure' if self.server.public_origin else ''))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
@@ -89,10 +110,20 @@ class Handler(BaseHTTPRequestHandler):
     def guard_origin(self):
         port = self.server.server_address[1]
         allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if self.server.public_origin:
+            host = urlsplit(self.server.public_origin).hostname
+            allowed_hosts = {host, host + ':443'}
+            # Railway health checks contain no user data or authorization. Keep
+            # this exception limited to GET /health with no browser origin.
+            if (self.command == 'GET' and urlsplit(self.path).path == '/health'
+                    and not self.headers.get('Origin')
+                    and self.headers.get('Host', '').lower() in {'healthcheck.railway.app', f'127.0.0.1:{port}', f'localhost:{port}'}):
+                return
         if self.headers.get("Host", "").lower() not in allowed_hosts:
-            raise PolicyError("invalid_host", "The gateway accepts only its loopback hostname.", 403)
+            raise PolicyError("invalid_host", "This hostname is not configured for Tavrel.", 403)
         origin = self.headers.get("Origin")
-        if origin and origin not in {f"http://{host}" for host in allowed_hosts}:
+        allowed_origins = {self.server.public_origin} if self.server.public_origin else {f"http://{host}" for host in allowed_hosts}
+        if origin and origin not in allowed_origins:
             raise PolicyError("invalid_origin", "Cross-origin requests are not allowed.", 403)
 
     def bearer(self):
@@ -158,7 +189,7 @@ class Handler(BaseHTTPRequestHandler):
         engine = self.server.engine
         payments = self.server.payments
         auth = self.server.wallet_auth
-        origin = "http://" + self.headers["Host"].lower()
+        origin = self.server.public_origin or "http://" + self.headers["Host"].lower()
         if method == "GET" and path == "/v1/auth/status":
             session = auth.session(self.headers.get("Cookie"))
             return {"authenticated": bool(session), "account": session["account"] if session else None,

@@ -13,6 +13,7 @@ The app brings agents, recipients, approvals, and payment receipts into one plac
 - [How it works](#how-it-works)
 - [Judge Guide](#judge-guide)
 - [Getting started](#getting-started)
+- [Deploying on Railway](#deploying-on-railway)
 - [Connecting an agent](#connecting-an-agent)
 - [Invoice tasks](#invoice-tasks)
 - [Automatic agent-wallet payments](#automatic-agent-wallet-payments)
@@ -157,9 +158,41 @@ Open the printed address, normally `http://127.0.0.1:8787`. The build produces t
 
 First-wallet registration requires a same-origin browser request to the loopback app and a valid wallet signature. It cannot replace an existing account owner. The app requests access only from the selected extension. Sessions expire after 30 minutes, survive page reloads, and are revoked by Disconnect. Your connected wallet's private key stays in its extension.
 
-If a wallet popup does not open, click the extension in your browser toolbar, unlock it, and check pending requests. SubWallet access requests use its native Substrate interface. Access and account-list requests time out after 45 seconds; the login-signature request times out after 90 seconds. **Cancel connection** or closing the modal stops the app from using late extension replies. Close any old pending wallet request before reconnecting; Tavrel does not automatically repeat signing or sign-in verification.
+If a wallet popup does not open, click the extension in your browser toolbar, unlock it, and check pending requests. SubWallet access requests use its native Substrate interface. Access and account-list requests time out after 45 seconds; the login-signature request times out after 90 seconds. Closing the modal stops the app from using late extension replies. Close any old pending wallet request before reconnecting; Tavrel does not automatically repeat signing or sign-in verification. The server warms and reuses its native signature verifier, and successful login returns the display address directly.
 
-The server currently binds to loopback. A public HTTPS service and competition transport are separate deployment work, not a feature silently enabled by this command.
+This command starts the local app. Use the hosted entrypoint below for Railway.
+
+## Deploying on Railway
+
+The repository includes a [Dockerfile](Dockerfile) and [Railway configuration](railway.json). Railway builds the frontend and bundled payment helpers, installs the Python app, and runs `python -m tavrel.hosted`. This avoids Railpack's Python auto-detection error, **No start command detected**. The frontend and API run together in one service.
+
+1. Deploy the latest `main` from this repository with the repository root as the service root. Railway should use the **Dockerfile** builder. Remove any old build or start command overrides so it uses the Dockerfile commands.
+2. Under **Networking**, generate a public HTTPS domain. Railway supplies `RAILWAY_PUBLIC_DOMAIN`; for a custom domain, set `TAVREL_PUBLIC_ORIGIN` to its full HTTPS origin, such as `https://payments.example.com`, without a path.
+3. Add a persistent volume mounted at **`/data`**. Keep **one replica**: the SQLite ledger, login sessions, allowance reservations, and encrypted agent wallets belong to that volume.
+4. Set these service variables, then redeploy:
+
+| Variable | Value |
+| --- | --- |
+| `TAVREL_OWNER_WALLET` | The public Substrate address of the wallet you will connect. SS58 or a 32-byte public AccountId is accepted. |
+| `TAVREL_DATA_DIR` | `/data`, matching the volume mount. |
+| `TAVREL_WALLET_VAULT_KEY` | A stable Fernet encryption key for newly created automatic agent wallets. Generate it once using the command below. |
+| `TAVREL_PUBLIC_ORIGIN` | Optional when using Railway's generated domain; required for a custom domain. |
+
+Generate the vault key locally, then paste its output into Railway's private Variables settings:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Keep that key private and preserve it across deployments. Replacing it prevents existing agent wallets from decrypting. A Windows-created vault uses Windows profile encryption and cannot be moved to Linux merely by copying its files; create a separate hosted agent wallet instead.
+
+Railway supplies `PORT`; the app listens on `0.0.0.0`. The configured health check is `/health`. Successful startup logs `Tavrel ready at https://YOUR_DOMAIN`. Open that domain and connect the wallet configured above. An existing ledger's owner cannot be replaced by changing the variable.
+
+Each deployment has one account owner. Visitors and judges can browse the public routes; account operations require that owner's wallet. Judges can run their own local installation to test with their own wallet. The hosted app makes no LLM calls and needs no model API key.
+
+The default image supports invoice tasks, wallet login, manual transfers, automatic agent wallets, and receipt tracking. Optional **policy proof generation** requires separate local proving setup and is not included in this image. The app hides unavailable proof actions; native tVFY payments remain independent of that optional proof.
+
+Package and hosted authentication checks are linked under [Tests and evidence](#tests-and-evidence). A successful Railway deployment and a funded transfer still need to be observed on the deployed service.
 
 ## Connecting an agent
 
@@ -278,6 +311,7 @@ The bundle's SHA-256 reference identifies the actual artifact. `zkverify_transac
 | [auth.py](tavrel/auth.py) | Registered wallet ownership, expiring login challenges, replay prevention, and revocable sessions. |
 | [agent.py](tavrel/agent.py) | Invoice task execution and status watching through restricted agent APIs. |
 | [agent_runs.py](tavrel/agent_runs.py) | Deterministic invoice validation, durable action plans, scoped runs, and retry identities. |
+| [wallet_verifier.py](tavrel/wallet_verifier.py) | Reuses native crypto for wallet login with bounded waits and independent request IDs. |
 | [agent_wallets.py](tavrel/agent_wallets.py) | Separate encrypted wallets and explicit bounded automatic-signing permissions. |
 | [server.py](tavrel/server.py) | App/API routes, authentication, origin checks, and reconciliation lifecycle. |
 | [proofs](proofs) | Optional payment-policy circuit and witness/commitment construction. |
@@ -313,6 +347,11 @@ After proof setup, run `node --test tests/policy-proof.test.mjs` to check the ac
 | [Cryptographic tests](tests/native-signing.test.mjs) | Offline signatures verify against stored public chain payloads. |
 | [Wallet connection tests](tests/wallet-connection.test.mjs) | Selected native access, bounded waiting, retry after timeout/cancellation, unsupported account filtering, and exact payment payloads. |
 | [Wallet login tests](tests/wallet-login.test.mjs) | Cancelled or timed-out signatures never reach verification; successful login signs the exact challenge once. |
+| [Signature-worker tests](tests/test_wallet_verifier.py) | Actual signatures, changed claims, concurrent callers, worker recovery, and fail-closed timeouts. |
+| [Hosted tests](tests/test_hosted.py) | HTTPS domain validation, Railway health checks, pinned wallet ownership, actual message signatures, and Secure login/logout cookies. |
+| [Packaged hosted runtime](artifacts/railway-package-check.json) | Built wheel runs outside the source tree, serves frontend assets, verifies a real login signature, and derives an agent-wallet address using bundled helpers without runtime node_modules. Docker/Railway deployment remains unobserved. |
+| [Latest wallet browser record](artifacts/ui/wallet-connection-proof.json) | Modal-close cancellation, ignored late replies, retry, actual native-signature login, and removal of Cancel connection. Live balance and installed extension speed are outside this focused check. |
+| [Verifier timing record](artifacts/wallet-verifier-check.json) | Three cold and three reused native-verifier calls with an offline fixture; excludes extension and human signing time. Reproduce with `python scripts/check-wallet-verifier.py`. |
 | [Invoice task tests](tests/test_agent_runs.py) | Input validation, exact ledger outcomes, scoped access, duplicate references, crash recovery, cancellation, recipient binding, and retained historical runs. |
 | [Agent-wallet tests](tests/test_agent_wallets.py) | Encrypted keys, version/expiry/sender permissions, required approval, funding/fee checks, and revocation before durable transaction storage. |
 | [Policy proof checks](artifacts/policy-proof-check.json) | Twelve actual FFLONK generation/verification cases, including altered claims and allowance overflows. |
@@ -328,7 +367,7 @@ Tests do not spend funds. A funded installed-wallet transfer must be confirmed b
 - A saved signature stays bound to its reviewed call, nonce, network, and mortal era. Uncertain outcomes retain reservations until finalized success, failure, or verified expiry.
 - Confirmed principal reduces the remaining allowance; fees are tracked separately when emitted by the chain.
 - App invoice tasks and the deterministic CLI use the same payment ledger. Explicit invoice details drive execution; natural-language reasoning, external invoice fetching, and LLM calls are not included.
-- Public hosting, competition authentication/transport, hackathon submission, and observed funded-wallet settlement are separate from the local implementation and automated test results.
+- Railway configuration and hosted authentication are implemented. Deployed-service behavior, hackathon submission, and funded-wallet settlement require their own observed results.
 
 ## Project context and references
 

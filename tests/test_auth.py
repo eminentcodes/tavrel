@@ -91,6 +91,15 @@ class WalletAuthTests(EngineCase):
 class WalletBrowserAuthTests(GatewayCase):
     fixture = WalletAuthTests.fixture
 
+    def test_wallet_checksum_is_checked_before_a_signature_is_requested(self):
+        from tavrel.payments import wallet_address
+        address = wallet_address('0x' + '12' * 32)
+        invalid = address[:-1] + ('1' if address[-1] != '1' else '2')
+        self.assertEqual(self.post('/v1/auth/challenge', {'address': invalid})[0], 400)
+        self.assertFalse(self.gateway.wallet_auth.configured())
+        with self.engine.connection() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM wallet_challenges').fetchone()[0], 0)
+
     def post(self, path, body, headers=None):
         connection = HTTPConnection('127.0.0.1', self.gateway.server_address[1], timeout=15)
         try:
